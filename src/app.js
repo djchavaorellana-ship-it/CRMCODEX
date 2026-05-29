@@ -1085,13 +1085,20 @@ function userRequestsCard() {
 }
 
 function usersAdminCard() {
-  return `<article class="card user-admin-card" id="administracion-usuarios"><div class="card-title">Administración de usuarios</div>
+  return `<article class="card user-admin-card" id="administracion-usuarios">
+    <div class="section-head">
+      <div class="card-title">Administración de usuarios</div>
+      <button class="secondary-button compact" type="button" data-action="new-user">Nuevo usuario</button>
+    </div>
     <div class="user-list">${state.users.map((user) => `<div class="user-row">
       <span><strong>${user.name}</strong><small>${user.email} · ${effectiveRole(user)} · ${user.leadAccess === 'all' ? 'Todos los leads' : 'Solo asignados'}</small></span>
       <span>${user.permissions.length} permisos activos</span>
       <div class="row-actions">
         <button class="secondary-button compact" type="button" data-action="edit-user-permissions" data-user="${user.id}">Permisos</button>
-        ${user.isSuperAdmin ? '<span class="badge caliente"><i></i>Protegido</span>' : `<button class="secondary-button compact" type="button" data-action="toggle-temp-admin" data-user="${user.id}">${user.temporaryAdmin ? 'Quitar admin temporal' : 'Admin temporal'}</button>`}
+        ${user.isSuperAdmin
+          ? '<span class="badge caliente"><i></i>Protegido</span>'
+          : `<button class="secondary-button compact" type="button" data-action="toggle-temp-admin" data-user="${user.id}">${user.temporaryAdmin ? 'Quitar admin temporal' : 'Admin temporal'}</button>
+             <button class="secondary-button compact danger" type="button" data-action="delete-user" data-user="${user.id}">Eliminar</button>`}
       </div>
     </div>`).join('')}</div></article>`;
 }
@@ -1403,6 +1410,7 @@ function drawer() {
     'user-permissions': 'Permisos de usuario',
     'request-permissions': 'Permisos de solicitud',
     'service-form': state.drawer.mode === 'edit' ? 'Editar servicio' : 'Nuevo servicio',
+    'user-form': 'Nuevo usuario',
   }[state.drawer.type];
   return `<div class="drawer-backdrop" data-action="close-drawer"></div><aside class="drawer" aria-label="${title}"><header><div><p class="eyebrow">TOP CRM</p><h2>${title}</h2></div><button class="icon-button" type="button" data-action="close-drawer">×</button></header>${drawerBody(lead)}</aside>`;
 }
@@ -1420,6 +1428,7 @@ function drawerBody(lead) {
   if (state.drawer.type === 'user-permissions') return permissionsForm('user', state.users.find((user) => user.id === state.drawer.userId));
   if (state.drawer.type === 'request-permissions') return permissionsForm('request', state.accessRequests.find((request) => request.id === state.drawer.requestId));
   if (state.drawer.type === 'service-form') return serviceForm(state.serviceCatalog.find((service) => service.id === state.drawer.serviceId));
+  if (state.drawer.type === 'user-form') return userForm();
   return '';
 }
 
@@ -1494,6 +1503,16 @@ function serviceForm(service) {
     <label class="checkbox-line"><input type="checkbox" name="active" ${current.active ? 'checked' : ''} />Activo</label>
     <label class="form-field"><span>Notas internas</span><textarea name="notes" rows="3">${escapeHtml(current.notes)}</textarea></label>
     <button class="primary-button" type="submit">Guardar servicio</button>
+  </form>`;
+}
+
+function userForm() {
+  return `<form class="form" data-form="user">
+    ${input('Nombre completo', 'name', '', true)}
+    ${input('Correo electrónico', 'email', '', true, 'email')}
+    ${input('Contraseña', 'password', '', true, 'password')}
+    ${select('Acceso a leads', 'leadAccess', 'assigned', [['assigned', 'Solo asignados'], ['all', 'Todos los leads']])}
+    <button class="primary-button" type="submit">Crear usuario</button>
   </form>`;
 }
 
@@ -1627,6 +1646,8 @@ function handleAction(event, action) {
     return setState({ drawer: { type: 'user-permissions', userId: target.dataset.user } });
   }
   if (action === 'toggle-temp-admin') return toggleTemporaryAdmin(target.dataset.user);
+  if (action === 'new-user') return currentUser()?.isSuperAdmin ? setState({ drawer: { type: 'user-form' } }) : requirePermission('manage_users');
+  if (action === 'delete-user') return deleteUser(target.dataset.user);
   if (action === 'new-service') return currentUser()?.isSuperAdmin ? setState({ drawer: { type: 'service-form', mode: 'new' } }) : requirePermission('manage_quote_pricing');
   if (action === 'edit-service') return currentUser()?.isSuperAdmin ? setState({ drawer: { type: 'service-form', mode: 'edit', serviceId: target.dataset.service } }) : requirePermission('manage_quote_pricing');
   if (action === 'toggle-service') return toggleService(target.dataset.service);
@@ -1775,6 +1796,15 @@ async function handleSubmit(event) {
   }
 
   if (type === 'permissions') return savePermissions(formData, data);
+
+  if (type === 'user') {
+    if (!currentUser()?.isSuperAdmin) return requirePermission('manage_users');
+    const email = normalizeEmail(data.email);
+    if (!email || !data.name || !data.password) return setState({ toast: 'Nombre, correo y contraseña son obligatorios.' });
+    if (state.users.some((user) => user.email === email)) return setState({ toast: 'Ya existe un usuario con ese correo.' });
+    const newUser = userEntity({ name: data.name, email, password: data.password, leadAccess: data.leadAccess || 'assigned', status: 'active', approvedAt: new Date().toISOString() });
+    return setState({ users: [...state.users, newUser], drawer: null, toast: `Usuario creado: ${data.name}` });
+  }
 
   if (type === 'service') {
     if (!currentUser()?.isSuperAdmin) return requirePermission('manage_quote_pricing');
@@ -1947,6 +1977,15 @@ function deleteService(id) {
       : state.serviceCatalog.filter((item) => item.id !== id),
     toast: used ? 'Servicio usado en cotizaciones: se marcó como inactivo' : 'Servicio eliminado',
   });
+}
+
+function deleteUser(id) {
+  if (!currentUser()?.isSuperAdmin) return requirePermission('manage_users');
+  const user = state.users.find((u) => u.id === id);
+  if (!user || user.isSuperAdmin) return;
+  if (user.id === state.currentUserId) return setState({ toast: 'No puedes eliminar tu propia cuenta.' });
+  if (!window.confirm(`¿Eliminar al usuario "${user.name}"? Esta acción no se puede deshacer.`)) return;
+  setState({ users: state.users.filter((u) => u.id !== id), toast: `Usuario eliminado: ${user.name}` });
 }
 
 function toggleTemporaryAdmin(id) {
