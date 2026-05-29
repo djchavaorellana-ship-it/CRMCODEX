@@ -402,7 +402,7 @@ p {
 }
 
 h1 {
-  font-size: 24px;
+  font-size: clamp(18px, 1.8vw, 24px);
   line-height: 1.15;
 }
 
@@ -1040,7 +1040,7 @@ h1 {
   margin-bottom: 10px;
 }
 
-@media (max-width: 1220px) {
+@media (max-width: 1440px) {
   .layout {
     grid-template-columns: 320px 1fr;
   }
@@ -1182,10 +1182,12 @@ h1 {
 .metric-card {
   display: grid;
   gap: 5px;
+  min-width: 0;
 }
 
 .metric-card strong {
-  font-size: 22px;
+  font-size: clamp(14px, 1.6vw, 22px);
+  overflow-wrap: break-word;
 }
 
 .metric-card span {
