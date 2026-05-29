@@ -1061,7 +1061,6 @@ h1 {
     height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    overflow-x: hidden;
   }
 
   .brand {
