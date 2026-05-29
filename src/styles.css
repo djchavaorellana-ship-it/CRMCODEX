@@ -1154,7 +1154,22 @@ h1 {
 .card-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+/* reset margin-based spacing inside flex containers that use gap */
+.page-actions .primary-button,
+.card-actions .primary-button,
+.row-actions .primary-button,
+.topbar-actions .primary-button {
+  margin-top: 0;
+}
+
+.page-actions .secondary-button + .secondary-button,
+.card-actions .secondary-button + .secondary-button,
+.row-actions .secondary-button + .secondary-button {
+  margin-top: 0;
 }
 
 .card-actions {
@@ -1975,6 +1990,7 @@ h1 {
 .row-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   justify-content: flex-end;
 }
