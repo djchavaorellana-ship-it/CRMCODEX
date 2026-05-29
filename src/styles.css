@@ -1053,7 +1053,7 @@ h1 {
 
 @media (max-width: 860px) {
   .shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .sidebar {
@@ -1061,6 +1061,7 @@ h1 {
     height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    overflow-x: hidden;
   }
 
   .brand {
@@ -2203,6 +2204,7 @@ h1 {
   .topbar-actions {
     display: grid;
     flex: 1 1 calc(100% - 48px);
+    min-width: 0;
     grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto;
     gap: 8px;
     margin-left: 0;
@@ -2259,7 +2261,8 @@ h1 {
   }
 
   .content {
-    padding: 12px 12px 18px;
+    padding: 12px 12px calc(18px + env(safe-area-inset-bottom));
+    overflow-x: hidden;
   }
 
   h1 {
@@ -2499,6 +2502,11 @@ h1 {
   .card-actions {
     display: grid;
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .card-actions .secondary-button + .secondary-button {
+    margin-top: 0;
   }
 
   .compact-primary,
