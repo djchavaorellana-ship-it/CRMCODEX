@@ -772,8 +772,8 @@ function sidebar() {
   return `
     <aside class="sidebar">
       <a class="brand" href="#" data-view="dashboard" aria-label="TOP CRM">
-        <img class="brand-light" src="/src/assets/top-logo-light.png" alt="TOP producciones" />
-        <img class="brand-dark" src="/src/assets/top-logo-dark.png" alt="TOP producciones" />
+        <img class="brand-light" src="/assets/top-logo-light.png" alt="TOP producciones" />
+        <img class="brand-dark" src="/assets/top-logo-dark.png" alt="TOP producciones" />
       </a>
       <nav class="nav" aria-label="Navegacion principal">
         ${groups.map(([title, items]) => `<div class="nav-section"><p>${title}</p>${items.map(([key, icon, label]) => `<button class="nav-item ${state.view === key ? 'active' : ''}" data-view="${key}" type="button"><span>${icon}</span>${label}</button>`).join('')}</div>`).join('')}
@@ -819,8 +819,8 @@ function authScreen() {
   return `<main class="auth-shell">
     <section class="auth-card">
       <div class="auth-brand">
-        <img class="brand-light" src="/src/assets/top-logo-light.png" alt="TOP producciones" />
-        <img class="brand-dark" src="/src/assets/top-logo-dark.png" alt="TOP producciones" />
+        <img class="brand-light" src="/assets/top-logo-light.png" alt="TOP producciones" />
+        <img class="brand-dark" src="/assets/top-logo-dark.png" alt="TOP producciones" />
       </div>
       <p class="eyebrow">TOP CRM</p>
       <h1>${isRequest ? 'Solicitar acceso' : 'Iniciar sesión'}</h1>
@@ -1176,7 +1176,7 @@ function quotePreview(quote, lead) {
   const grouped = quoteCategoryNames(quote.items, quote.categoryOrder).map((category) => [category, quote.items.filter((item) => item.category === category && (item.name || item.unitPrice))]).filter(([, items]) => items.length);
   const totals = quoteTotals(quote);
   return `<div class="pdf-preview">
-    <header><img src="/src/assets/top-logo-light.png" alt="TOP" /><div><strong>${quoteCode(quote)}</strong><span>${quote.status}</span></div></header>
+    <header><img src="/assets/top-logo-light.png" alt="TOP" /><div><strong>${quoteCode(quote)}</strong><span>${quote.status}</span></div></header>
     <section class="pdf-meta"><div><p>Cliente</p><strong>${lead.name}</strong><span>${lead.phone}</span><span>${lead.email || 'Sin correo'}</span></div><div><p>Evento</p><strong>${lead.eventType}</strong><span>${dateLabel(lead.eventDate)} · ${lead.venue}</span><span>${lead.guests} invitados</span></div></section>
     <div class="pdf-table">${grouped.map(([category, items]) => `<section><h3>${category}</h3>${items.map((item) => `<div class="pdf-row"><span><strong>${item.name || category}</strong><small>${item.description || 'Concepto de produccion TOP'}</small></span><em>${item.quantity}</em><em>${money(item.unitPrice)}</em><b>${money(item.amount)}</b></div>`).join('')}</section>`).join('')}</div>
     <section class="pdf-totals">${fieldRows([['Subtotal', money(totals.subtotal)], ['Descuento', money(totals.discount)], ['IVA', money(totals.iva)], ['Total', money(totals.total)]])}</section>
@@ -2486,7 +2486,7 @@ async function downloadQuotePdf(id, options = {}) {
 }
 
 async function buildQuotePdf(quote, lead) {
-  const logoSrc = await assetDataUrl('/src/assets/top-logo-light.png');
+  const logoSrc = await assetDataUrl('/assets/top-logo-light.png');
   const html = quotePdfCaptureHtml(quote, lead, logoSrc);
   const pageImages = await renderPdfHtmlPages(html);
   return imagePagesPdf(pageImages);
@@ -2690,7 +2690,7 @@ function printableQuoteHtml(quote, lead) {
   const grouped = quoteCategoryNames(quote.items, quote.categoryOrder).map((category) => [category, quote.items.filter((item) => item.category === category && (item.name || item.unitPrice))]).filter(([, items]) => items.length);
   return `<!doctype html><html><head><meta charset="utf-8"><title>Cotizacion TOP V${quote.version}</title><style>
     body{font-family:Inter,Arial,sans-serif;margin:0;color:#171b19;background:#f4f6f5}.page{width:820px;margin:24px auto;background:white;padding:42px;border:1px solid #dde2df}.head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${TOP_BLUE};padding-bottom:22px}.head img{width:92px}.head strong{font-size:22px}.muted{color:#69716d;font-size:12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}.box{border:1px solid #e2e5e3;border-radius:8px;padding:14px}.box p{margin:0 0 8px;color:${TOP_BLUE};font-size:11px;font-weight:800;text-transform:uppercase}.box strong,.box span{display:block}.cat{margin-top:20px}.cat h2{font-size:14px;margin:0 0 8px;color:${TOP_BLUE}}.row{display:grid;grid-template-columns:1fr 54px 108px 108px;gap:10px;border-bottom:1px solid #e8ebe9;padding:10px 0}.row small{display:block;color:#69716d;margin-top:3px}.row em{font-style:normal;text-align:right;color:#69716d}.row b{text-align:right}.totals{margin:24px 0 0 auto;width:320px}.totals div{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #e8ebe9}.totals div:last-child{font-size:20px;font-weight:800;color:${TOP_BLUE}}.terms{margin-top:28px;border-top:1px solid #e2e5e3;padding-top:18px}.terms h2{font-size:13px;margin:14px 0 6px;color:${TOP_BLUE}}.terms p{margin:0;color:#39413d;line-height:1.5}@media print{body{background:white}.page{margin:0;border:0;width:auto;min-height:100vh}}
-  </style></head><body><main class="page"><section class="head"><img src="${location.origin}/src/assets/top-logo-light.png" alt="TOP"><div><strong>${quoteCode(quote)}</strong><div class="muted">${quote.status} · ${dateLabel(quote.updatedAt)}</div></div></section><section class="meta"><div class="box"><p>Cliente</p><strong>${escapeHtml(lead.name)}</strong><span>${escapeHtml(lead.phone)}</span><span>${escapeHtml(lead.email || 'Sin correo')}</span></div><div class="box"><p>Evento</p><strong>${escapeHtml(lead.eventType)}</strong><span>${dateLabel(lead.eventDate)} · ${escapeHtml(lead.venue)}</span><span>${lead.guests} invitados</span></div></section>${grouped.map(([category, items]) => `<section class="cat"><h2>${category}</h2>${items.map((item) => `<div class="row"><span><strong>${escapeHtml(item.name || category)}</strong><small>${escapeHtml(item.description || '')}</small></span><em>${item.quantity}</em><em>${money(item.unitPrice)}</em><b>${money(item.amount)}</b></div>`).join('')}</section>`).join('')}<section class="totals"><div><span>Subtotal</span><b>${money(totals.subtotal)}</b></div><div><span>Descuento</span><b>${money(totals.discount)}</b></div><div><span>IVA</span><b>${money(totals.iva)}</b></div><div><span>Total</span><b>${money(totals.total)}</b></div></section>${(quote.showTerms && quote.terms) || (quote.showValidity && quote.validity) || (quote.showNotes && quote.notes) ? `<section class="terms">${quote.showTerms && quote.terms ? `<h2>Condiciones comerciales</h2><p>${escapeHtml(quote.terms)}</p>` : ''}${quote.showValidity && quote.validity ? `<h2>Validez</h2><p>${escapeHtml(quote.validity)}</p>` : ''}${quote.showNotes && quote.notes ? `<h2>Notas</h2><p>${escapeHtml(quote.notes)}</p>` : ''}</section>` : ''}</main></body></html>`;
+  </style></head><body><main class="page"><section class="head"><img src="${location.origin}/assets/top-logo-light.png" alt="TOP"><div><strong>${quoteCode(quote)}</strong><div class="muted">${quote.status} · ${dateLabel(quote.updatedAt)}</div></div></section><section class="meta"><div class="box"><p>Cliente</p><strong>${escapeHtml(lead.name)}</strong><span>${escapeHtml(lead.phone)}</span><span>${escapeHtml(lead.email || 'Sin correo')}</span></div><div class="box"><p>Evento</p><strong>${escapeHtml(lead.eventType)}</strong><span>${dateLabel(lead.eventDate)} · ${escapeHtml(lead.venue)}</span><span>${lead.guests} invitados</span></div></section>${grouped.map(([category, items]) => `<section class="cat"><h2>${category}</h2>${items.map((item) => `<div class="row"><span><strong>${escapeHtml(item.name || category)}</strong><small>${escapeHtml(item.description || '')}</small></span><em>${item.quantity}</em><em>${money(item.unitPrice)}</em><b>${money(item.amount)}</b></div>`).join('')}</section>`).join('')}<section class="totals"><div><span>Subtotal</span><b>${money(totals.subtotal)}</b></div><div><span>Descuento</span><b>${money(totals.discount)}</b></div><div><span>IVA</span><b>${money(totals.iva)}</b></div><div><span>Total</span><b>${money(totals.total)}</b></div></section>${(quote.showTerms && quote.terms) || (quote.showValidity && quote.validity) || (quote.showNotes && quote.notes) ? `<section class="terms">${quote.showTerms && quote.terms ? `<h2>Condiciones comerciales</h2><p>${escapeHtml(quote.terms)}</p>` : ''}${quote.showValidity && quote.validity ? `<h2>Validez</h2><p>${escapeHtml(quote.validity)}</p>` : ''}${quote.showNotes && quote.notes ? `<h2>Notas</h2><p>${escapeHtml(quote.notes)}</p>` : ''}</section>` : ''}</main></body></html>`;
 }
 
 function daysInStage(lead) {
