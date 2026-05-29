@@ -110,6 +110,7 @@ const defaultState = {
 };
 
 let state = loadState();
+let toastTimer = null;
 
 function createSeedData() {
   const leads = [
@@ -577,6 +578,10 @@ function setState(next) {
   state = { ...state, ...next };
   persist();
   render();
+  if (next.toast) {
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => setState({ toast: '' }), 3500);
+  }
 }
 
 function mergeSeedUsers(users) {
