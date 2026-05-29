@@ -112,6 +112,12 @@ const defaultState = {
 let state = loadState();
 let toastTimer = null;
 
+// --- Convex cross-device sync ---
+// Set VITE_CONVEX_URL in your environment to enable. Without it the app works
+// exactly as before using localStorage only.
+const CONVEX_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CONVEX_URL) || '';
+let lastConvexStateJson = '';
+
 function createSeedData() {
   const leads = [
     leadEntity({
@@ -571,7 +577,10 @@ function stripTransient(nextState) {
 }
 
 function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
+  const data = stripTransient(state);
+  const json = JSON.stringify(data);
+  localStorage.setItem(STORAGE_KEY, json);
+  convexSave(json);
 }
 
 function setState(next) {
@@ -582,6 +591,59 @@ function setState(next) {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => setState({ toast: '' }), 3500);
   }
+}
+
+function convexSave(stateJson) {
+  if (!CONVEX_URL) return;
+  if (stateJson.length > 900_000) return; // stay within Convex 1 MB doc limit
+  lastConvexStateJson = stateJson;
+  fetch(`${CONVEX_URL}/api/mutation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: 'state:save', format: 'json', args: { stateJson } }),
+  }).catch(() => {});
+}
+
+async function convexPoll() {
+  if (!CONVEX_URL) return;
+  try {
+    const res = await fetch(`${CONVEX_URL}/api/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: 'state:get', format: 'json', args: {} }),
+    });
+    if (!res.ok) return;
+    const body = await res.json();
+    const remoteJson = body.status === 'success' ? body.value?.stateJson : null;
+    if (!remoteJson || remoteJson === lastConvexStateJson) return;
+    lastConvexStateJson = remoteJson;
+    state = hydrateState(JSON.parse(remoteJson));
+    localStorage.setItem(STORAGE_KEY, remoteJson);
+    render();
+  } catch {}
+}
+
+function initConvexSync() {
+  if (!CONVEX_URL) return;
+  fetch(`${CONVEX_URL}/api/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: 'state:get', format: 'json', args: {} }),
+  })
+    .then((res) => res.json())
+    .then(({ status, value }) => {
+      if (status !== 'success') return;
+      if (!value?.stateJson) {
+        convexSave(JSON.stringify(stripTransient(state)));
+      } else {
+        lastConvexStateJson = value.stateJson;
+        state = hydrateState(JSON.parse(value.stateJson));
+        localStorage.setItem(STORAGE_KEY, value.stateJson);
+        render();
+      }
+    })
+    .catch(() => {});
+  setInterval(convexPoll, 15_000);
 }
 
 function mergeSeedUsers(users) {
@@ -2761,6 +2823,7 @@ function hasActiveDraftInput() {
 }
 
 render();
+initConvexSync();
 window.setInterval(() => {
   if (!hasActiveDraftInput()) render();
 }, 60 * 1000);
