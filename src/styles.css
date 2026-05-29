@@ -1064,8 +1064,15 @@ h1 {
   }
 
   .brand {
-    height: 58px;
+    height: 52px;
     padding-inline: 14px;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  .brand img {
+    height: 28px;
+    width: auto;
   }
 
   .nav {
@@ -2187,7 +2194,7 @@ h1 {
 
   .topbar {
     position: sticky;
-    top: 111px;
+    top: 110px;
     z-index: 7;
     flex-flow: row wrap;
     gap: 8px;
@@ -2453,12 +2460,14 @@ h1 {
 
 @media (max-width: 520px) {
   .brand {
-    height: 50px;
-    padding: 8px 12px 0;
+    height: 48px;
+    padding: 0 12px;
+    align-items: center;
   }
 
   .brand img {
-    width: 68px;
+    height: 26px;
+    width: auto;
   }
 
   .nav {
@@ -2471,7 +2480,7 @@ h1 {
   }
 
   .topbar {
-    top: 103px;
+    top: 100px;
   }
 
   .topbar-actions {
