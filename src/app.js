@@ -1275,8 +1275,9 @@ function contextMenu() {
     ['lost', 'Marcar como lead perdido', can('move_leads')],
     ['delete', 'Eliminar lead', can('delete_leads')],
   ];
+  const allowedCount = items.filter(([, , allowed]) => allowed).length;
   return `
-    <div class="context-menu" style="left:${state.contextMenu.x}px; top:${state.contextMenu.y}px;" role="menu">
+    <div class="context-menu" style="${contextMenuStyle(allowedCount, can('delete_leads') ? 2 : 1)}" role="menu">
       ${items.slice(0, 5).filter(([, , allowed]) => allowed).map(([action, label]) => `<button type="button" data-context-action="${action}" data-lead="${lead.id}">${label}</button>`).join('')}
       <hr />
       ${items.slice(5, 7).filter(([, , allowed]) => allowed).map(([action, label]) => `<button type="button" data-context-action="${action}" data-lead="${lead.id}">${label}</button>`).join('')}
@@ -1289,7 +1290,7 @@ function contextMenu() {
 function quoteContextMenu() {
   const quote = state.quotes.find((item) => item.id === state.contextMenu.quoteId);
   if (!quote) return '';
-  return `<div class="context-menu" style="left:${state.contextMenu.x}px; top:${state.contextMenu.y}px;" role="menu">
+  return `<div class="context-menu" style="${contextMenuStyle(9, 2)}" role="menu">
     <button type="button" data-quote-context-action="open" data-quote="${quote.id}">Abrir cotización</button>
     <button type="button" data-quote-context-action="edit" data-quote="${quote.id}">Editar cotización</button>
     <button type="button" data-quote-context-action="duplicate" data-quote="${quote.id}">Duplicar como nueva versión</button>
@@ -1308,13 +1309,21 @@ function quoteItemContextMenu() {
   const quote = state.quotes.find((item) => item.id === state.contextMenu.quoteId);
   const item = quote?.items.find((entry) => entry.id === state.contextMenu.itemId);
   if (!quote || !item) return '';
-  return `<div class="context-menu" style="left:${state.contextMenu.x}px; top:${state.contextMenu.y}px;" role="menu">
+  return `<div class="context-menu" style="${contextMenuStyle(4, 1)}" role="menu">
     <button type="button" data-item-context-action="edit" data-quote="${quote.id}" data-item="${item.id}">Editar concepto</button>
     <button type="button" data-item-context-action="duplicate" data-quote="${quote.id}" data-item="${item.id}">Duplicar concepto</button>
     <button type="button" data-item-context-action="move" data-quote="${quote.id}" data-item="${item.id}">Mover a otra categoría</button>
     <hr />
     <button class="danger-action" type="button" data-item-context-action="delete" data-quote="${quote.id}" data-item="${item.id}">Eliminar concepto</button>
   </div>`;
+}
+
+function contextMenuStyle(itemCount, dividerCount = 0) {
+  const menuWidth = 244;
+  const menuHeight = Math.min(window.innerHeight - 24, 12 + itemCount * 36 + dividerCount * 13);
+  const left = Math.max(12, Math.min(state.contextMenu.x, window.innerWidth - menuWidth - 12));
+  const top = Math.max(12, Math.min(state.contextMenu.y, window.innerHeight - menuHeight - 12));
+  return `left:${Math.round(left)}px; top:${Math.round(top)}px;`;
 }
 
 function filesCard(lead) {

@@ -1895,6 +1895,10 @@ h1 {
 .context-menu {
   position: fixed;
   z-index: 45;
+  width: min(244px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   min-width: 230px;
   padding: 6px;
   border: 1px solid var(--line);
