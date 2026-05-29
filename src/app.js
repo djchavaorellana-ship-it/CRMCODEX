@@ -1048,6 +1048,7 @@ function settingsView() {
     <div class="settings-grid">
       <article class="card"><div class="card-title">Modelo de datos</div>${fieldRows([['Leads', state.leads.length], ['Seguimientos', state.followUps.length], ['Cotizaciones', state.quotes.length], ['Archivos', state.files.length], ['Eventos timeline', state.timelineEvents.length]])}</article>
       <article class="card"><div class="card-title">Apariencia</div><button class="secondary-button" type="button" data-action="toggle-dark">${state.darkMode ? 'Usar modo claro' : 'Usar modo oscuro'}</button></article>
+      <article class="card"><div class="card-title">Sincronizar entre dispositivos</div><p>El CRM guarda los datos en este navegador. Para ver los mismos datos en otro dispositivo, exporta aquí e importa allá.</p><div class="card-actions"><button class="secondary-button compact" type="button" data-action="export-state">Exportar datos</button><label class="secondary-button compact" style="cursor:pointer;"><input type="file" accept=".json" style="display:none" data-action="import-state" />Importar datos</label></div></article>
       <article class="card"><div class="card-title">Datos locales</div><p>Las entidades estan separadas por ID y vinculadas con leadId. Despues pueden ir directo a tablas reales.</p><div class="card-actions"><button class="secondary-button compact danger" type="button" data-action="reset-data">Restaurar datos demo</button><button class="secondary-button compact danger" type="button" data-action="clear-local-data">Borrar todos los datos locales</button></div></article>
       ${serviceCatalogCard()}
       ${currentUser()?.isSuperAdmin ? discountRequestsCard() + userRequestsCard() + usersAdminCard() : ''}
@@ -1597,6 +1598,28 @@ function bindEvents() {
   document.querySelectorAll('[data-form]').forEach((form) => form.addEventListener('submit', handleSubmit));
   document.querySelectorAll('form[data-form="quote"]').forEach((form) => form.addEventListener('keydown', preventQuoteEnterSubmit));
   document.querySelectorAll('[data-service-select]').forEach((node) => node.addEventListener('change', () => fillServiceRow(node)));
+  const importInput = document.querySelector('input[data-action="import-state"]');
+  if (importInput) {
+    importInput.addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (!imported.leads || !imported.users) throw new Error('Archivo inválido');
+          if (!window.confirm('¿Reemplazar todos los datos locales con el archivo importado?')) return;
+          state = hydrateState(imported);
+          persist();
+          render();
+          setState({ toast: 'Datos importados correctamente' });
+        } catch {
+          setState({ toast: 'Error al importar: el archivo no es válido.' });
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
 }
 
 function bindAuthEvents() {
@@ -1677,6 +1700,18 @@ function handleAction(event, action) {
   if (action === 'dismiss-urgent') return setState({ dismissedUrgentId: `${target.dataset.lead}-${target.dataset.followup}` });
   if (action === 'go-alert-lead') return setState({ selectedLeadId: target.dataset.lead, view: 'dashboard', dismissedUrgentId: `${target.dataset.lead}-${target.dataset.followup}` });
   if (action === 'complete-followup') return completeFollowup();
+  if (action === 'export-state') {
+    const data = JSON.stringify(stripTransient(state), null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `top-crm-backup-${date}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return setState({ toast: 'Datos exportados correctamente' });
+  }
   if (action === 'reset-data') {
     if (!currentUser()?.isSuperAdmin) return requirePermission('manage_users');
     if (!confirm('¿Restaurar los datos demo? Se reemplazaran los datos locales actuales.')) return;
