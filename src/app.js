@@ -1554,6 +1554,7 @@ function bindEvents() {
   document.querySelectorAll('[data-item-context-action]').forEach((node) => node.addEventListener('click', (event) => handleItemContextAction(event, node.dataset.itemContextAction, node.dataset.quote, node.dataset.item)));
   if (state.contextMenu) {
     window.setTimeout(() => document.addEventListener('click', closeContextOnOutsideClick, { once: true }), 0);
+    document.querySelector('.context-menu')?.addEventListener('wheel', (event) => event.stopPropagation(), { passive: true });
   }
   document.querySelectorAll('[data-download-file]').forEach((node) => node.addEventListener('click', (event) => {
     event.stopPropagation();
