@@ -554,6 +554,8 @@ h1 {
 .right-stack {
   display: grid;
   gap: 10px;
+  min-width: 0;
+  align-content: start;
 }
 
 .card {

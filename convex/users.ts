@@ -223,12 +223,22 @@ export const saveMetadata = mutation({
       throw new Error('Sesión requerida para actualizar usuarios');
     }
     const users: any[] = JSON.parse(entitiesJson);
+    if (users.length === 0) return; // Guard: never wipe all users from a stale sync
+
+    const allExisting = await ctx.db.query('users').collect();
+    const newIds = new Set(users.map((u) => u.id));
+
+    // Delete users that are no longer in the list (except Super Admins)
+    for (const existing of allExisting) {
+      if (!newIds.has(existing.entityId) && !existing.isSuperAdmin) {
+        await ctx.db.delete(existing._id);
+      }
+    }
+
+    // Patch existing users (never create — that requires createUser action with bcrypt)
     for (const user of users) {
-      const existing = await ctx.db
-        .query('users')
-        .withIndex('by_entityId', (q) => q.eq('entityId', user.id))
-        .first();
-      if (!existing) continue; // skip: must be created via createUser action
+      const existing = allExisting.find((e) => e.entityId === user.id);
+      if (!existing) continue;
       await ctx.db.patch(existing._id, {
         name:           String(user.name ?? existing.name),
         email:          String(user.email ?? existing.email).toLowerCase().trim(),
