@@ -3016,16 +3016,19 @@ async function downloadFile(fileId) {
   anchor.click();
 }
 
-function sendQuoteWhatsApp(id) {
+async function sendQuoteWhatsApp(id) {
   const quote = state.quotes.find((item) => item.id === id);
   const lead = quote && state.leads.find((item) => item.id === quote.leadId);
   if (!quote || !lead) return;
-  downloadQuotePdf(id, { silent: true });
-  // Adjuntar PDF automáticamente por WhatsApp requiere WhatsApp Business API o backend externo.
   const message = `Hola ${lead.name.split(' ')[0]}.\n\nTe comparto la cotización ${quoteCode(quote)} para tu evento.\n\nEl archivo PDF se descargó automáticamente para que puedas adjuntarlo aquí.\n\nQuedo atento a cualquier duda.\n\nTOP Producciones.`;
   const digits = lead.phone.replace(/\D/g, '');
   const phone = digits.length >= 10 ? `52${digits.slice(-10)}` : '';
-  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener');
+  const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  const whatsappTab = window.open('', '_blank', 'noopener');
+  await downloadQuotePdf(id, { silent: true });
+  // Adjuntar PDF automáticamente por WhatsApp requiere WhatsApp Business API o backend externo.
+  if (whatsappTab) whatsappTab.location.href = whatsappUrl;
+  else window.open(whatsappUrl, '_blank', 'noopener');
   setState({ timelineEvents: [auditQuoteEvent(quote, lead, 'Cotización preparada para envío por WhatsApp', quoteCode(quote), `Se descargó PDF y se preparo WhatsApp para ${quoteCode(quote)}.`), ...state.timelineEvents], toast: 'El PDF se descargó correctamente. Adjunta el archivo manualmente en WhatsApp.' });
 }
 

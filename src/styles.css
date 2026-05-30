@@ -1257,7 +1257,10 @@ h1 {
 }
 
 .quote-panel {
-  overflow: auto;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .quote-panel--history {
@@ -1271,11 +1274,20 @@ h1 {
   max-width: 440px;
 }
 
-.quote-panel--editor,
+.quote-panel--editor {
+  flex: 1 1 0;
+  min-width: 260px;
+  overflow-x: hidden;
+  container-type: inline-size;
+  container-name: editor-panel;
+}
+
 .quote-panel--preview {
   flex: 1 1 0;
   min-width: 260px;
-  overflow: hidden;
+  overflow-x: hidden;
+  container-type: inline-size;
+  container-name: preview-panel;
 }
 
 .quote-resizer {
@@ -1372,6 +1384,129 @@ h1 {
   font-size: 11px;
 }
 
+
+/* ── Container queries: editor panel ──────────────────────────────────── */
+
+@container editor-panel (max-width: 680px) {
+  .quote-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quote-item-actions {
+    grid-column: 1 / -1;
+  }
+
+  .lead-quote-row,
+  .service-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container editor-panel (max-width: 460px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-category-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quote-category-head > input {
+    width: 100%;
+  }
+
+  .quote-editor-tools,
+  .row-actions,
+  .card-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .quote-visibility-block {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Container queries: preview panel ─────────────────────────────────── */
+
+@container preview-panel (max-width: 560px) {
+  .pdf-preview {
+    padding: clamp(14px, 4cqi, 28px);
+    font-size: clamp(11px, 2.6cqi, 14px);
+    min-height: auto;
+    line-height: 1.5;
+  }
+
+  .pdf-preview header {
+    gap: clamp(8px, 2cqi, 20px);
+  }
+
+  .pdf-preview header img {
+    width: clamp(48px, 13cqi, 86px);
+    max-height: 56px;
+  }
+
+  .pdf-preview header div {
+    max-width: 58cqi;
+  }
+
+  .pdf-preview header strong {
+    font-size: clamp(11px, 2.8cqi, 15px);
+  }
+
+  .pdf-meta {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin: clamp(10px, 3cqi, 18px) 0;
+  }
+
+  .pdf-meta div {
+    padding: clamp(8px, 2cqi, 12px);
+  }
+
+  .pdf-row {
+    grid-template-columns: 1fr auto auto;
+    gap: clamp(4px, 1.2cqi, 8px);
+    padding: clamp(5px, 1.5cqi, 8px) 0;
+  }
+
+  .pdf-row em:first-of-type {
+    display: none;
+  }
+
+  .pdf-totals {
+    margin-left: 0;
+  }
+
+  .pdf-totals .field-rows {
+    max-width: 100%;
+  }
+}
+
+@container preview-panel (max-width: 360px) {
+  .pdf-preview header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pdf-preview header div {
+    text-align: left;
+    max-width: 100%;
+  }
+
+  .pdf-row {
+    grid-template-columns: 1fr;
+  }
+
+  .pdf-row em,
+  .pdf-row b {
+    text-align: left;
+  }
+}
+
+/* ── End container queries ─────────────────────────────────────────────── */
 
 .quote-editor {
   padding: 0;
