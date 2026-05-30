@@ -1075,10 +1075,10 @@ function leadsView() {
       ${leads.map((lead) => {
         const followup = currentFollowup(lead.id);
         return `<button class="table-row ${lead.id === state.selectedLeadId ? 'selected' : ''}" type="button" data-select-lead="${lead.id}" data-lead-context="${lead.id}">
-          <span><strong>${lead.name}</strong><small>${lead.source} · ${lead.phone}</small></span>
-          <span>${lead.eventType}<small>${dateLabel(lead.eventDate)} · ${lead.venue}</small></span>
-          <span>${lead.stage}</span><span>${badge(lead.priority)}</span><span><strong>${money(lead.potential)}</strong></span>
-          <span>${followup?.action || 'Sin seguimiento'}<small>${datetimeLabel(followup?.dueAt)}</small></span>
+          <span data-label="Lead"><strong>${lead.name}</strong><small>${lead.source} · ${lead.phone}</small></span>
+          <span data-label="Evento">${lead.eventType}<small>${dateLabel(lead.eventDate)} · ${lead.venue}</small></span>
+          <span data-label="Etapa">${lead.stage}</span><span data-label="Prioridad">${badge(lead.priority)}</span><span data-label="Monto"><strong>${money(lead.potential)}</strong></span>
+          <span data-label="Próxima acción">${followup?.action || 'Sin seguimiento'}<small>${datetimeLabel(followup?.dueAt)}</small></span>
         </button>`;
       }).join('')}
     </div>

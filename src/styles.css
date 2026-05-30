@@ -399,6 +399,7 @@ h2,
 h3,
 p {
   margin: 0;
+  overflow-wrap: break-word;
 }
 
 h1 {
@@ -2114,11 +2115,19 @@ h1 {
     justify-content: flex-start;
   }
 
-  .kpi-grid,
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .cards-grid,
   .settings-grid,
   .agenda-row {
     grid-template-columns: 1fr;
+  }
+
+  .reminder-row {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   .drawer {
@@ -2143,8 +2152,23 @@ h1 {
 
   .table-row {
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
+  }
+
+  .table-row [data-label]::before {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    content: attr(data-label);
+  }
+
+  .table-row [data-label="Lead"]::before {
+    display: none;
   }
 
   .quote-item-grid,
