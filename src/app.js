@@ -764,15 +764,18 @@ function mergeSeedUsers(users) {
   seedUsers.forEach((seedUser) => {
     const existing = byId.get(seedUser.id);
     if (existing) {
+      // Always keep existing user — only enforce Super Admin invariants
       const merged = {
         ...existing,
         password: existing.password || seedUser.password,
         ...(seedUser.isSuperAdmin ? { isSuperAdmin: true, permissions: allPermissions, leadAccess: 'all', status: 'active' } : {}),
       };
       byId.set(seedUser.id, userEntity(merged));
-    } else {
+    } else if (seedUser.isSuperAdmin) {
+      // Super Admin was deleted or never saved — restore only the Super Admin
       byId.set(seedUser.id, seedUser);
     }
+    // Non-super-admin seed users that were deleted stay deleted
   });
   return [...byId.values()];
 }
