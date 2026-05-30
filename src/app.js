@@ -602,6 +602,7 @@ async function convexQuery(path, args = {}) {
   if (!res.ok) throw new Error(`Convex query ${path} → ${res.status}`);
   const body = await res.json();
   if (body.status !== 'success') throw new Error(body.errorMessage || 'Convex query failed');
+
   return body.value;
 }
 
@@ -614,6 +615,18 @@ async function convexMutation(path, args = {}) {
   if (!res.ok) throw new Error(`Convex mutation ${path} → ${res.status}`);
   const body = await res.json();
   if (body.status !== 'success') throw new Error(body.errorMessage || 'Convex mutation failed');
+  return body.value;
+}
+
+async function convexAction(path, args = {}) {
+  const res = await fetch(`${CONVEX_URL}/api/action`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, format: 'json', args }),
+  });
+  if (!res.ok) throw new Error(`Convex action ${path} → ${res.status}`);
+  const body = await res.json();
+  if (body.status !== 'success') throw new Error(body.errorMessage || 'Convex action failed');
   return body.value;
 }
 
@@ -630,15 +643,15 @@ async function doConvexSync() {
   const data = stripTransient(state);
   try {
     await Promise.all([
-      convexMutation('leads:save', { entitiesJson: JSON.stringify(data.leads) }),
-      convexMutation('followUps:save', { entitiesJson: JSON.stringify(data.followUps) }),
-      convexMutation('quotes:save', { entitiesJson: JSON.stringify(data.quotes) }),
-      convexMutation('timeline:save', { entitiesJson: JSON.stringify(data.timelineEvents) }),
-      convexMutation('users:save', { entitiesJson: JSON.stringify(data.users) }),
-      convexMutation('catalog:save', { entitiesJson: JSON.stringify(data.serviceCatalog) }),
-      convexMutation('files:save', { entitiesJson: JSON.stringify(data.files) }),
-      convexMutation('misc:saveDiscountRequests', { entitiesJson: JSON.stringify(data.discountRequests) }),
-      convexMutation('misc:saveAccessRequests', { entitiesJson: JSON.stringify(data.accessRequests) }),
+      convexMutation('leads:save',                  { entitiesJson: JSON.stringify(data.leads) }),
+      convexMutation('followUps:save',              { entitiesJson: JSON.stringify(data.followUps) }),
+      convexMutation('quotes:save',                 { entitiesJson: JSON.stringify(data.quotes) }),
+      convexMutation('timeline:save',               { entitiesJson: JSON.stringify(data.timelineEvents) }),
+      convexMutation('users:saveMetadata',          { entitiesJson: JSON.stringify(data.users) }),  // no passwords
+      convexMutation('catalog:save',                { entitiesJson: JSON.stringify(data.serviceCatalog) }),
+      convexMutation('files:save',                  { entitiesJson: JSON.stringify(data.files) }),
+      convexMutation('misc:saveDiscountRequests',   { entitiesJson: JSON.stringify(data.discountRequests) }),
+      convexMutation('misc:saveAccessRequests',     { entitiesJson: JSON.stringify(data.accessRequests) }),
     ]);
     lastConvexSaveAt = Date.now();
   } catch (e) {
@@ -694,18 +707,28 @@ async function initConvexSync() {
   if (!CONVEX_URL) return;
   try {
     const remote = await loadFromConvex();
-    if (!remote || !remote.leads) {
-      // Convex is empty — seed it from localStorage
-      await doConvexSync();
-    } else if (remote.leads.length > 0) {
+    if (remote && remote.leads && remote.leads.length > 0) {
       // Convex has data — use it as authoritative source
       state = hydrateState(remote);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
       render();
-    } else {
-      // Convex is connected but tables are empty — seed it
-      await doConvexSync();
+    } else if (remote) {
+      // Connected but empty — migrate from localStorage (hash passwords in Convex)
+      const data = stripTransient(state);
+      await convexAction('users:migrateUsers', { usersJson: JSON.stringify(data.users) });
+      await Promise.all([
+        convexMutation('leads:save',                { entitiesJson: JSON.stringify(data.leads) }),
+        convexMutation('followUps:save',            { entitiesJson: JSON.stringify(data.followUps) }),
+        convexMutation('quotes:save',               { entitiesJson: JSON.stringify(data.quotes) }),
+        convexMutation('timeline:save',             { entitiesJson: JSON.stringify(data.timelineEvents) }),
+        convexMutation('catalog:save',              { entitiesJson: JSON.stringify(data.serviceCatalog) }),
+        convexMutation('files:save',                { entitiesJson: JSON.stringify(data.files) }),
+        convexMutation('misc:saveDiscountRequests', { entitiesJson: JSON.stringify(data.discountRequests) }),
+        convexMutation('misc:saveAccessRequests',   { entitiesJson: JSON.stringify(data.accessRequests) }),
+      ]);
+      lastConvexSaveAt = Date.now();
     }
+    // If remote is null (connection failed), keep using localStorage
   } catch (e) {
     console.warn('[TOP CRM] Convex init failed, using localStorage:', e.message);
   }
@@ -1896,9 +1919,20 @@ async function handleSubmit(event) {
   const lead = selectedLead();
 
   if (type === 'login') {
-    const user = state.users.find((item) => item.email === normalizeEmail(data.email) && item.password === data.password);
-    const pendingRequest = state.accessRequests.find((item) => item.email === normalizeEmail(data.email) && item.password === data.password && item.status === 'pending');
-    if (pendingRequest) return setState({ toast: 'Tu solicitud fue recibida. El administrador debe aprobar tu acceso.' });
+    const email = normalizeEmail(data.email);
+    let user = null;
+    if (CONVEX_URL) {
+      try {
+        const result = await convexAction('users:authenticate', { email, password: data.password });
+        user = result ? (state.users.find((u) => u.id === result.id) || result) : null;
+      } catch (e) {
+        return setState({ toast: 'Error de conexión. Intenta de nuevo.' });
+      }
+    } else {
+      user = state.users.find((item) => item.email === email && item.password === data.password);
+    }
+    const pendingRequest = state.accessRequests.find((item) => item.email === email && item.status === 'pending');
+    if (!user && pendingRequest) return setState({ toast: 'Tu solicitud fue recibida. El administrador debe aprobar tu acceso.' });
     if (!user) return setState({ toast: 'Correo o contraseña incorrectos.' });
     if (user.status !== 'active') return setState({ toast: 'Tu solicitud fue recibida. El administrador debe aprobar tu acceso.' });
     const firstView = can('view_dashboard', user) ? 'dashboard' : can('view_leads', user) ? 'leads' : 'configuracion';
@@ -1921,6 +1955,14 @@ async function handleSubmit(event) {
 
   if (type === 'password') {
     if (data.password !== data.confirmPassword) return setState({ toast: 'Las contraseñas no coinciden.' });
+    if (CONVEX_URL) {
+      try {
+        await convexAction('users:changePassword', { entityId: state.currentUserId, newPassword: data.password });
+        return setState({ drawer: null, toast: 'Contraseña actualizada' });
+      } catch (e) {
+        return setState({ toast: 'Error al actualizar contraseña. Intenta de nuevo.' });
+      }
+    }
     return setState({
       users: state.users.map((user) => user.id === state.currentUserId ? userEntity({ ...user, password: data.password }) : user),
       drawer: null,
@@ -1935,7 +1977,19 @@ async function handleSubmit(event) {
     const email = normalizeEmail(data.email);
     if (!email || !data.name || !data.password) return setState({ toast: 'Nombre, correo y contraseña son obligatorios.' });
     if (state.users.some((user) => user.email === email)) return setState({ toast: 'Ya existe un usuario con ese correo.' });
-    const newUser = userEntity({ name: data.name, email, password: data.password, leadAccess: data.leadAccess || 'assigned', status: 'active', approvedAt: new Date().toISOString() });
+    const newUser = userEntity({ name: data.name, email, leadAccess: data.leadAccess || 'assigned', status: 'active', approvedAt: new Date().toISOString() });
+    if (CONVEX_URL) {
+      try {
+        await convexAction('users:createUser', {
+          entityId: newUser.id, name: newUser.name, email, password: data.password,
+          role: newUser.role, leadAccess: newUser.leadAccess, permissions: newUser.permissions,
+        });
+      } catch (e) {
+        return setState({ toast: 'Error al crear usuario. Intenta de nuevo.' });
+      }
+    } else {
+      newUser.password = data.password;
+    }
     return setState({ users: [...state.users, newUser], drawer: null, toast: `Usuario creado: ${data.name}` });
   }
 
@@ -2058,14 +2112,13 @@ function savePermissions(formData, data) {
   }
 }
 
-function approveRequest(id) {
+async function approveRequest(id) {
   if (!currentUser()?.isSuperAdmin) return requirePermission('manage_users');
   const request = state.accessRequests.find((item) => item.id === id);
   if (!request) return;
-  const user = userEntity({
+  const newUser = userEntity({
     name: request.name,
     email: request.email,
-    password: request.password,
     position: request.position,
     message: request.message,
     temporaryAdmin: request.temporaryAdmin,
@@ -2074,8 +2127,22 @@ function approveRequest(id) {
     status: 'active',
     approvedAt: new Date().toISOString(),
   });
+  if (CONVEX_URL) {
+    try {
+      await convexAction('users:createUser', {
+        entityId: newUser.id, name: newUser.name, email: newUser.email,
+        password: request.password || '',
+        role: newUser.role, leadAccess: newUser.leadAccess, permissions: newUser.permissions,
+        temporaryAdmin: newUser.temporaryAdmin,
+      });
+    } catch (e) {
+      return setState({ toast: 'Error al crear usuario aprobado. Intenta de nuevo.' });
+    }
+  } else {
+    newUser.password = request.password || '';
+  }
   setState({
-    users: [user, ...state.users],
+    users: [newUser, ...state.users],
     accessRequests: state.accessRequests.map((item) => item.id === id ? accessRequestEntity({ ...item, status: 'approved', decidedAt: new Date().toISOString() }) : item),
     toast: `Usuario aprobado: ${request.name}`,
   });
