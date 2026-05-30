@@ -79,6 +79,8 @@ const followupStatusMeta = {
 
 const today = new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date());
 
+const CONVEX_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CONVEX_URL) || '';
+let state;
 const seed = createSeedData();
 const seedUsers = createSeedUsers();
 const defaultState = {
@@ -113,13 +115,12 @@ const defaultState = {
   sessionToken: '',
 };
 
-let state = loadState();
+state = loadState();
 state.sessionToken = sessionStorage.getItem('crm-session-token') || '';
 let toastTimer = null;
 
 // --- Convex structured sync ---
 // Set VITE_CONVEX_URL to enable cross-device sync. Falls back to localStorage only.
-const CONVEX_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CONVEX_URL) || '';
 let convexSyncTimer = null;
 let lastConvexSaveAt = 0;
 let isSyncing = false;
@@ -813,7 +814,7 @@ function assignQuoteCodes(quotes) {
 }
 
 function currentUser() {
-  return state.users.find((user) => user.id === state.currentUserId && user.status === 'active') || null;
+  return state?.users?.find((user) => user.id === state.currentUserId && user.status === 'active') || null;
 }
 
 function effectiveRole(user = currentUser()) {
