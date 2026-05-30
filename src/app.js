@@ -1566,8 +1566,8 @@ function quoteCard(lead) {
   return `<article class="card lead-quotes-card"><div class="section-head"><div><div class="card-title">Cotizaciones</div><p>Versiones vinculadas al lead.</p></div>${can('view_quotes') ? '<button class="secondary-button compact" type="button" data-action="new-quote">Nueva</button>' : ''}</div>
     <div class="lead-quote-list">${quotes.length ? quotes.map((quote) => `<div class="lead-quote-row" data-quote-context="${quote.id}">
       <span><strong>${quoteCode(quote)}</strong><small>${dateLabel(quote.createdAt)}</small></span>
-      <span>${quote.status}<small>${quote.createdBy}</small></span>
       <b>${money(quote.amount)}</b>
+      <span class="lead-quote-meta">${quote.status}<small>${quote.createdBy}</small></span>
       <div class="row-actions">
         <button type="button" data-action="open-quote" data-quote="${quote.id}">Abrir</button>
         <button type="button" data-action="duplicate-quote" data-quote="${quote.id}">Duplicar</button>

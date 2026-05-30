@@ -1810,12 +1810,39 @@ h1 {
 
 .lead-quote-row {
   display: grid;
-  grid-template-columns: 58px 1fr auto auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
   align-items: center;
   padding: 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.lead-quote-row > span:first-child {
+  min-width: 0;
+}
+
+.lead-quote-row > span:first-child strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-quote-row > b {
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.lead-quote-row > .lead-quote-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-quote-row > .row-actions {
+  justify-content: flex-end;
 }
 
 .lead-quote-row small {
@@ -2465,7 +2492,6 @@ h1 {
     grid-column: 1 / -1;
   }
 
-  .lead-quote-row,
   .service-row,
   .pdf-meta,
   .pdf-row {
