@@ -223,6 +223,16 @@ export default defineSchema({
     .index('by_status',   ['status'])
     .index('by_createdAt', ['createdAt']),
 
+  // ─── SESSIONS ────────────────────────────────────────────────────────────
+  // Short-lived tokens created on login, validated in write mutations.
+  sessions: defineTable({
+    entityId:  v.string(),
+    token:     v.string(),
+    expiresAt: v.string(),
+  })
+    .index('by_token',    ['token'])
+    .index('by_entityId', ['entityId']),
+
   // ─── BUSINESS PROFILE ────────────────────────────────────────────────────
   // Singleton: solo existe un documento con key = "default".
   businessProfile: defineTable({

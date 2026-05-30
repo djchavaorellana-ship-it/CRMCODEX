@@ -1,4 +1,5 @@
 import { query, mutation } from './_generated/server';
+import { internal } from './_generated/api';
 import { v } from 'convex/values';
 
 function normalizeItem(item: any) {
@@ -77,12 +78,31 @@ export const list = query({
   },
 });
 
+// Returns the next available codeBase for today atomically.
+// Convex mutations are serialized — no two concurrent calls can produce the same code.
+export const nextCodeBase = mutation({
+  args: { dateCode: v.string() },
+  handler: async (ctx, { dateCode }) => {
+    const all = await ctx.db.query('quotes').collect();
+    const prefix = `TOP-${dateCode}-`;
+    const used = all
+      .filter((q) => q.codeBase?.startsWith(prefix))
+      .map((q) => Number(q.codeBase.split('-')[2]) || 0);
+    const next = Math.max(0, ...used) + 1;
+    return `TOP-${dateCode}-${String(next).padStart(3, '0')}`;
+  },
+});
+
 export const save = mutation({
-  args: { entitiesJson: v.string() },
-  handler: async (ctx, { entitiesJson }) => {
+  args: { entitiesJson: v.string(), _token: v.optional(v.string()) },
+  handler: async (ctx, { entitiesJson, _token }) => {
+    if (_token && !(await ctx.runQuery(internal.sessions._verify, { token: _token }))) {
+      throw new Error('Sesión inválida o expirada');
+    }
     const quotes: any[] = JSON.parse(entitiesJson);
-    const newIds = new Set(quotes.map((q) => q.id));
     const existing = await ctx.db.query('quotes').collect();
+    if (quotes.length === 0 && existing.length > 0) return;
+    const newIds = new Set(quotes.map((q) => q.id));
     const existingMap = new Map(existing.map((d) => [d.entityId, d]));
 
     for (const [entityId, doc] of existingMap) {

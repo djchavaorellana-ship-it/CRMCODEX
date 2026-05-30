@@ -108,9 +108,11 @@ const defaultState = {
   contextMenu: null,
   userMenuOpen: false,
   bnavMoreOpen: false,
+  sessionToken: '',
 };
 
 let state = loadState();
+state.sessionToken = sessionStorage.getItem('crm-session-token') || '';
 let toastTimer = null;
 
 // --- Convex structured sync ---
@@ -118,6 +120,7 @@ let toastTimer = null;
 const CONVEX_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CONVEX_URL) || '';
 let convexSyncTimer = null;
 let lastConvexSaveAt = 0;
+let isSyncing = false;
 
 function createSeedData() {
   const leads = [
@@ -346,7 +349,7 @@ function quoteEntity(data) {
   return {
     id: data.id || entityId('quote'),
     leadId: data.leadId,
-    amount: Number(data.amount || amount || data.potential || 0),
+    amount: items.length ? amount : Number(data.amount || data.potential || 0),
     status: quoteStatusAliases[data.status] || quoteStatusAliases[data.quoteStatus] || data.status || data.quoteStatus || 'Borrador',
     codeBase: data.codeBase || quoteCodeBase(data.createdAt || new Date().toISOString()),
     version: Number(data.version || 1),
@@ -381,7 +384,7 @@ function quoteItemEntity(data) {
     description: data.description || '',
     quantity,
     unitPrice,
-    amount: Number(data.amount || quantity * unitPrice),
+    amount: quantity * unitPrice,
   };
 }
 
@@ -425,6 +428,7 @@ function fileEntity(data) {
     uploadedBy: data.uploadedBy || 'Alejandro Lopez',
     uploadedAt: data.uploadedAt || new Date().toISOString(),
     dataUrl: data.dataUrl || '',
+    storageId: data.storageId || '',
   };
 }
 
@@ -575,8 +579,12 @@ function migrateLegacyState(raw) {
 }
 
 function stripTransient(nextState) {
-  const { drawer, toast, draggingLeadId, dismissedUrgentId, contextMenu, userMenuOpen, bnavMoreOpen, ...persistable } = nextState;
-  return persistable;
+  const { drawer, toast, draggingLeadId, dismissedUrgentId, contextMenu, userMenuOpen, bnavMoreOpen, sessionToken, ...persistable } = nextState;
+  return {
+    ...persistable,
+    users: (persistable.users || []).map(({ password, ...u }) => u),
+    accessRequests: (persistable.accessRequests || []).map(({ password, ...r }) => r),
+  };
 }
 
 function persist() {
@@ -610,10 +618,11 @@ async function convexQuery(path, args = {}) {
 }
 
 async function convexMutation(path, args = {}) {
+  const enriched = state?.sessionToken ? { ...args, _token: state.sessionToken } : args;
   const res = await fetch(`${CONVEX_URL}/api/mutation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, format: 'json', args }),
+    body: JSON.stringify({ path, format: 'json', args: enriched }),
   });
   if (!res.ok) throw new Error(`Convex mutation ${path} → ${res.status}`);
   const body = await res.json();
@@ -642,24 +651,23 @@ function scheduleConvexSync() {
 }
 
 async function doConvexSync() {
-  if (!CONVEX_URL) return;
+  if (!CONVEX_URL || isSyncing) return;
+  isSyncing = true;
   const data = stripTransient(state);
-  try {
-    await Promise.all([
-      convexMutation('leads:save',                  { entitiesJson: JSON.stringify(data.leads) }),
-      convexMutation('followUps:save',              { entitiesJson: JSON.stringify(data.followUps) }),
-      convexMutation('quotes:save',                 { entitiesJson: JSON.stringify(data.quotes) }),
-      convexMutation('timeline:save',               { entitiesJson: JSON.stringify(data.timelineEvents) }),
-      convexMutation('users:saveMetadata',          { entitiesJson: JSON.stringify(data.users) }),  // no passwords
-      convexMutation('catalog:save',                { entitiesJson: JSON.stringify(data.serviceCatalog) }),
-      convexMutation('files:save',                  { entitiesJson: JSON.stringify(data.files) }),
-      convexMutation('misc:saveDiscountRequests',   { entitiesJson: JSON.stringify(data.discountRequests) }),
-      convexMutation('misc:saveAccessRequests',     { entitiesJson: JSON.stringify(data.accessRequests) }),
-    ]);
-    lastConvexSaveAt = Date.now();
-  } catch (e) {
-    console.warn('[TOP CRM] Convex sync failed:', e.message);
-  }
+  const results = await Promise.allSettled([
+    convexMutation('leads:save',                  { entitiesJson: JSON.stringify(data.leads) }),
+    convexMutation('followUps:save',              { entitiesJson: JSON.stringify(data.followUps) }),
+    convexMutation('quotes:save',                 { entitiesJson: JSON.stringify(data.quotes) }),
+    convexMutation('timeline:save',               { entitiesJson: JSON.stringify(data.timelineEvents) }),
+    convexMutation('users:saveMetadata',          { entitiesJson: JSON.stringify(data.users) }),
+    convexMutation('catalog:save',                { entitiesJson: JSON.stringify(data.serviceCatalog) }),
+    convexMutation('files:save',                  { entitiesJson: JSON.stringify(data.files) }),
+    convexMutation('misc:saveDiscountRequests',   { entitiesJson: JSON.stringify(data.discountRequests) }),
+    convexMutation('misc:saveAccessRequests',     { entitiesJson: JSON.stringify(data.accessRequests) }),
+  ]);
+  lastConvexSaveAt = Date.now();
+  isSyncing = false;
+  results.forEach((r) => { if (r.status === 'rejected') console.warn('[TOP CRM] Partial sync failed:', r.reason?.message); });
 }
 
 async function loadFromConvex() {
@@ -686,7 +694,11 @@ function latestUpdatedAt(data) {
   const stamps = [
     ...(data.leads || []).map((e) => e.updatedAt || e.createdAt || ''),
     ...(data.quotes || []).map((e) => e.updatedAt || e.createdAt || ''),
-    ...(data.followUps || []).map((e) => e.createdAt || ''),
+    ...(data.followUps || []).map((e) => e.completedAt || e.canceledAt || e.createdAt || ''),
+    ...(data.timelineEvents || []).map((e) => e.date || e.createdAt || ''),
+    ...(data.files || []).map((e) => e.uploadedAt || ''),
+    ...(data.discountRequests || []).map((e) => e.decidedAt || e.createdAt || ''),
+    ...(data.accessRequests || []).map((e) => e.decidedAt || e.createdAt || ''),
   ];
   return stamps.sort().at(-1) || '';
 }
@@ -700,7 +712,9 @@ async function convexPoll() {
     const remoteLatest = latestUpdatedAt(remote);
     const localLatest = latestUpdatedAt(stripTransient(state));
     if (!remoteLatest || remoteLatest <= localLatest) return;
+    const { view, search, activePriority, leadStatusFilter, pipelineFilter, darkMode, currentUserId, selectedLeadId, selectedQuoteId, dismissedUrgentId } = state;
     state = hydrateState(remote);
+    Object.assign(state, { view, search, activePriority, leadStatusFilter, pipelineFilter, darkMode, currentUserId, selectedLeadId, selectedQuoteId, dismissedUrgentId });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
     render();
   } catch {}
@@ -710,7 +724,13 @@ async function initConvexSync() {
   if (!CONVEX_URL) return;
   try {
     const remote = await loadFromConvex();
-    if (remote && remote.leads && remote.leads.length > 0) {
+    const hasConvexData = remote && (
+      remote.leads?.length > 0 ||
+      remote.quotes?.length > 0 ||
+      remote.followUps?.length > 0 ||
+      remote.users?.length > 0
+    );
+    if (hasConvexData) {
       // Convex has data — use it as authoritative source
       state = hydrateState(remote);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
@@ -742,7 +762,16 @@ function mergeSeedUsers(users) {
   const byId = new Map(users.map((user) => [user.id, user]));
   seedUsers.forEach((seedUser) => {
     const existing = byId.get(seedUser.id);
-    byId.set(seedUser.id, existing ? userEntity({ ...existing, ...(seedUser.isSuperAdmin ? { isSuperAdmin: true, permissions: allPermissions, leadAccess: 'all', status: 'active' } : {}) }) : seedUser);
+    if (existing) {
+      const merged = {
+        ...existing,
+        password: existing.password || seedUser.password,
+        ...(seedUser.isSuperAdmin ? { isSuperAdmin: true, permissions: allPermissions, leadAccess: 'all', status: 'active' } : {}),
+      };
+      byId.set(seedUser.id, userEntity(merged));
+    } else {
+      byId.set(seedUser.id, seedUser);
+    }
   });
   return [...byId.values()];
 }
@@ -758,7 +787,7 @@ function assignQuoteCodes(quotes) {
         const dayCount = [...seen.keys()].filter((item) => item.startsWith(`${dateCode}-`)).length + 1;
         seen.set(key, `TOP-${dateCode}-${String(dayCount).padStart(3, '0')}`);
       }
-      return { ...quote, codeBase: quote.codeBase && !quote.codeBase.endsWith('-001') ? quote.codeBase : seen.get(key) };
+      return { ...quote, codeBase: quote.codeBase && /^TOP-\d{8}-\d{3}$/.test(quote.codeBase) ? quote.codeBase : seen.get(key) };
     });
 }
 
@@ -837,7 +866,7 @@ function leadFiles(leadId) {
 }
 
 function leadTimelineEvents(leadId) {
-  return state.timelineEvents.filter((item) => item.leadId === leadId).sort((a, b) => new Date(a.date) - new Date(b.date));
+  return state.timelineEvents.filter((item) => item.leadId === leadId).sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
 function currentFollowup(leadId) {
@@ -976,7 +1005,6 @@ function topbar() {
   const user = currentUser();
   return `
     <header class="topbar">
-      <button class="icon-button" type="button" aria-label="Abrir menu">☰</button>
       <label class="search"><span>⌕</span><input data-search type="search" value="${escapeHtml(state.search)}" placeholder="Buscar leads, clientes, eventos..." /><kbd>⌘ K</kbd></label>
       <div class="topbar-actions">
         ${can('create_leads') ? '<button class="secondary-button compact" type="button" data-action="new-lead">Nuevo lead</button>' : ''}
@@ -1527,7 +1555,7 @@ function filesCard(lead) {
   return `
     <article class="card files-card">
       <div class="section-head"><div><div class="card-title">Archivos compartidos</div><p>Cotizaciones, imagenes, videos y documentos vinculados al lead.</p></div>${can('upload_files') ? '<button class="secondary-button compact" type="button" data-action="upload-file">Subir archivo</button>' : ''}</div>
-      <div class="files">${files.length ? files.map((file) => `<div class="file-row"><span>${fileIcon(file)}</span><strong>${file.name}</strong><small>${file.kind} · ${datetimeLabel(file.uploadedAt)} · ${file.uploadedBy}</small><button type="button" data-download-file="${file.id}" ${file.dataUrl ? '' : 'disabled'}>↓</button></div>`).join('') : '<div class="empty-panel">Este lead todavia no tiene archivos compartidos.</div>'}</div>
+      <div class="files">${files.length ? files.map((file) => `<div class="file-row"><span>${fileIcon(file)}</span><strong>${file.name}</strong><small>${file.kind} · ${datetimeLabel(file.uploadedAt)} · ${file.uploadedBy}</small><button type="button" data-download-file="${file.id}" ${file.dataUrl || file.storageId ? '' : 'disabled'}>↓</button></div>`).join('') : '<div class="empty-panel">Este lead todavia no tiene archivos compartidos.</div>'}</div>
     </article>
   `;
 }
@@ -1551,12 +1579,12 @@ function followupDetail(lead) {
   const followup = currentFollowup(lead.id);
   const status = followupStatus(followup);
   const actions = can('edit_leads') ? `<div class="card-actions">${followup ? '<button class="primary-button" type="button" data-action="complete-followup">Marcar seguimiento como realizado</button>' : ''}<button class="secondary-button" type="button" data-action="schedule-followup">Agendar seguimiento</button></div>` : '';
-  return `<article class="card detail-card"><div class="section-head"><div><div class="card-title">Detalle del seguimiento</div><p>${datetimeLabel(followup?.dueAt)} · ${lead.owner}</p></div>${followup ? followupBadge(status) : badge(lead.priority)}</div><div class="detail-grid"><div><span>Tipo de accion</span><strong>${followup?.action || 'Sin seguimiento activo'}</strong></div><div><span>Etapa</span><strong>${lead.stage}</strong></div><div><span>Estado</span><strong>${followupStatusMeta[status]?.label || 'Sin seguimiento activo'}</strong></div></div><div class="copy-block"><h3>Respuesta sugerida</h3><p>Hola ${lead.name.split(' ')[0]}, solo dando seguimiento para saber si pudiste revisar la informacion. Con gusto puedo ayudarte a ajustar la propuesta para tu evento.</p></div><div class="note-box">${lead.notes}</div>${actions}</article>`;
+  return `<article class="card detail-card"><div class="section-head"><div><div class="card-title">Detalle del seguimiento</div><p>${datetimeLabel(followup?.dueAt)} · ${lead.owner}</p></div>${followup ? followupBadge(status) : badge(lead.priority)}</div><div class="detail-grid"><div><span>Tipo de accion</span><strong>${followup?.action || 'Sin seguimiento activo'}</strong></div><div><span>Etapa</span><strong>${lead.stage}</strong></div><div><span>Estado</span><strong>${followupStatusMeta[status]?.label || 'Sin seguimiento activo'}</strong></div></div><div class="copy-block"><h3>Respuesta sugerida</h3><p>Hola ${escapeHtml(lead.name.split(' ')[0])}, solo dando seguimiento para saber si pudiste revisar la informacion. Con gusto puedo ayudarte a ajustar la propuesta para tu evento.</p></div><div class="note-box">${escapeHtml(lead.notes)}</div>${actions}</article>`;
 }
 
 function historyCard(lead) {
   const items = leadTimelineEvents(lead.id);
-  return `<article class="card"><div class="section-head"><div><div class="card-title">Historial de seguimientos</div><p>Timeline expandible listo para contexto de IA.</p></div></div><div class="timeline">${items.map((item, index) => `<details class="timeline-item timeline-${timelineTone(item)}" ${index === items.length - 1 ? 'open' : ''}><summary><span class="timeline-icon">${channelIcon(item.channel, item.type)}</span><span><strong>${item.type}</strong><small>${item.title} · ${item.preview}</small></span><em>${datetimeLabel(item.date)} · ${item.owner}</em></summary><p>${item.detail}</p></details>`).join('')}</div></article>`;
+  return `<article class="card"><div class="section-head"><div><div class="card-title">Historial de seguimientos</div><p>Timeline expandible listo para contexto de IA.</p></div></div><div class="timeline">${items.map((item, index) => `<details class="timeline-item timeline-${timelineTone(item)}" ${index === items.length - 1 ? 'open' : ''}><summary><span class="timeline-icon">${channelIcon(item.channel, item.type)}</span><span><strong>${escapeHtml(item.type)}</strong><small>${escapeHtml(item.title)} · ${escapeHtml(item.preview)}</small></span><em>${datetimeLabel(item.date)} · ${escapeHtml(item.owner)}</em></summary><p>${escapeHtml(item.detail)}</p></details>`).join('')}</div></article>`;
 }
 
 function nextFollowup(lead) {
@@ -1655,7 +1683,7 @@ function profilePanel() {
 }
 
 function passwordForm() {
-  return `<form class="form" data-form="password">${input('Nueva contraseña', 'password', '', true, 'password')}${input('Confirmar contraseña', 'confirmPassword', '', true, 'password')}<button class="primary-button" type="submit">Actualizar contraseña</button></form>`;
+  return `<form class="form" data-form="password">${input('Contraseña actual', 'currentPassword', '', true, 'password')}${input('Nueva contraseña', 'password', '', true, 'password')}${input('Confirmar nueva contraseña', 'confirmPassword', '', true, 'password')}<button class="primary-button" type="submit">Actualizar contraseña</button></form>`;
 }
 
 function myPermissionsPanel() {
@@ -1796,9 +1824,9 @@ function bindEvents() {
     window.setTimeout(() => document.addEventListener('click', closeContextOnOutsideClick, { once: true }), 0);
     document.querySelector('.context-menu')?.addEventListener('wheel', (event) => event.stopPropagation(), { passive: true });
   }
-  document.querySelectorAll('[data-download-file]').forEach((node) => node.addEventListener('click', (event) => {
+  document.querySelectorAll('[data-download-file]').forEach((node) => node.addEventListener('click', async (event) => {
     event.stopPropagation();
-    downloadFile(node.dataset.downloadFile);
+    await downloadFile(node.dataset.downloadFile);
   }));
   document.querySelectorAll('[data-drag-lead]').forEach((node) => node.addEventListener('dragstart', () => { state.draggingLeadId = node.dataset.dragLead; }));
   document.querySelectorAll('[data-drop-stage]').forEach((node) => {
@@ -1849,7 +1877,13 @@ function handleAction(event, action) {
     event.stopPropagation();
     return requirePermission('move_leads') && setState({ selectedLeadId: target.dataset.lead, drawer: { type: 'stage-form' }, bnavMoreOpen: false });
   }
-  if (action === 'logout') return setState({ currentUserId: null, userMenuOpen: false, drawer: null, toast: '' });
+  if (action === 'logout') {
+    const token = state.sessionToken;
+    sessionStorage.removeItem('crm-session-token');
+    setState({ currentUserId: null, sessionToken: '', userMenuOpen: false, drawer: null, toast: '' });
+    if (CONVEX_URL && token) convexMutation('sessions:revoke', { token }).catch(() => {});
+    return;
+  }
   if (action === 'profile') return setState({ drawer: { type: 'profile' }, userMenuOpen: false });
   if (action === 'change-password') return setState({ drawer: { type: 'password' }, userMenuOpen: false });
   if (action === 'my-permissions') return setState({ drawer: { type: 'permissions' }, userMenuOpen: false });
@@ -1908,8 +1942,9 @@ if (action === 'reset-data') {
   if (action === 'clear-local-data') {
     if (!currentUser()?.isSuperAdmin) return requirePermission('manage_users');
     if (!confirm('¿Seguro que deseas borrar todos los datos locales? Esta acción no se puede deshacer.')) return;
+    clearTimeout(convexSyncTimer);
     state = emptyInitializedState();
-    persist();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
     return render();
   }
 }
@@ -1994,7 +2029,19 @@ async function handleSubmit(event) {
     if (CONVEX_URL) {
       try {
         const result = await convexAction('users:authenticate', { email, password: data.password });
-        user = result ? (state.users.find((u) => u.id === result.id) || result) : null;
+        if (result) {
+          const existing = state.users.find((u) => u.id === result.id);
+          if (existing) {
+            user = existing;
+          } else {
+            user = userEntity(result);
+            state = { ...state, users: [...state.users, user] };
+          }
+          if (result.sessionToken) {
+            state.sessionToken = result.sessionToken;
+            sessionStorage.setItem('crm-session-token', result.sessionToken);
+          }
+        }
       } catch (e) {
         return setState({ toast: 'Error de conexión. Intenta de nuevo.' });
       }
@@ -2025,14 +2072,18 @@ async function handleSubmit(event) {
 
   if (type === 'password') {
     if (data.password !== data.confirmPassword) return setState({ toast: 'Las contraseñas no coinciden.' });
+    if (!data.currentPassword) return setState({ toast: 'Debes ingresar tu contraseña actual.' });
     if (CONVEX_URL) {
       try {
-        await convexAction('users:changePassword', { entityId: state.currentUserId, newPassword: data.password });
+        await convexAction('users:changePassword', { entityId: state.currentUserId, oldPassword: data.currentPassword, newPassword: data.password });
         return setState({ drawer: null, toast: 'Contraseña actualizada' });
       } catch (e) {
-        return setState({ toast: 'Error al actualizar contraseña. Intenta de nuevo.' });
+        const msg = e.message || '';
+        return setState({ toast: msg.includes('incorrecta') ? 'Contraseña actual incorrecta.' : 'Error al actualizar contraseña. Intenta de nuevo.' });
       }
     }
+    const me = state.users.find((u) => u.id === state.currentUserId);
+    if (!me || me.password !== data.currentPassword) return setState({ toast: 'Contraseña actual incorrecta.' });
     return setState({
       users: state.users.map((user) => user.id === state.currentUserId ? userEntity({ ...user, password: data.password }) : user),
       drawer: null,
@@ -2271,13 +2322,19 @@ function toggleTemporaryAdmin(id) {
   });
 }
 
-function createDraftQuote(leadId) {
+async function createDraftQuote(leadId) {
   if (!requirePermission('view_quotes')) return;
   const lead = state.leads.find((item) => item.id === leadId) || selectedLead();
   if (!lead || !canAccessLead(lead)) return requirePermission('view_quotes');
+  let codeBase = nextQuoteCodeBase();
+  if (CONVEX_URL) {
+    try {
+      codeBase = await convexMutation('quotes:nextCodeBase', { dateCode: quoteDateCode(new Date().toISOString()) });
+    } catch {}
+  }
   const quote = quoteEntity({
     leadId: lead.id,
-    codeBase: nextQuoteCodeBase(),
+    codeBase,
     status: 'Borrador',
     version: nextQuoteVersion(lead.id),
     services: lead.services,
@@ -2385,7 +2442,7 @@ function parseQuoteItems(formData, existingQuote, priceAllowed) {
       name: names[index] || service?.name || '',
       description: descriptions[index] || service?.description || '',
       quantity: quantities[index],
-      unitPrice: priceAllowed ? prices[index] : previousItem?.unitPrice ?? service?.listPrice ?? prices[index],
+      unitPrice: priceAllowed ? prices[index] : previousItem?.unitPrice ?? service?.listPrice ?? 0,
     });
   }).filter((item) => item.name || item.unitPrice || item.description);
 }
@@ -2738,8 +2795,23 @@ function safeFileName(value) {
 async function uploadedFileFromForm(formData, fallbackName, fallbackKind, leadId) {
   const file = formData.get('file');
   if (!(file instanceof File) || !file.name) return null;
+  const id = entityId('file');
+  const name = fallbackName || file.name;
+  const kind = fallbackKind || fileKindFromMime(file.type);
+  const mime = file.type || 'application/octet-stream';
+  const uploadedBy = currentUser()?.name || 'Sistema';
+  if (CONVEX_URL) {
+    try {
+      const uploadUrl = await convexMutation('files:generateUploadUrl', {});
+      const res = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': mime }, body: file });
+      const { storageId } = await res.json();
+      return fileEntity({ id, leadId, name, kind, mime, uploadedBy, storageId });
+    } catch (e) {
+      console.warn('[TOP CRM] Convex file upload failed, falling back to dataUrl:', e.message);
+    }
+  }
   const dataUrl = await fileToDataUrl(file);
-  return fileEntity({ leadId, name: fallbackName || file.name, kind: fallbackKind || fileKindFromMime(file.type), mime: file.type || 'application/octet-stream', dataUrl, uploadedBy: currentUser()?.name || 'Sistema' });
+  return fileEntity({ id, leadId, name, kind, mime, dataUrl, uploadedBy });
 }
 
 function fileKindFromMime(mime = '') {
@@ -2758,9 +2830,22 @@ function fileToDataUrl(file) {
   });
 }
 
-function downloadFile(fileId) {
+async function downloadFile(fileId) {
   const file = state.files.find((item) => item.id === fileId);
-  if (!file?.dataUrl) return setState({ toast: 'Este archivo demo no tiene descarga local' });
+  if (!file) return;
+  if (file.storageId && CONVEX_URL) {
+    try {
+      const url = await convexQuery('files:getUrl', { storageId: file.storageId });
+      if (url) {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = file.name;
+        anchor.click();
+        return;
+      }
+    } catch {}
+  }
+  if (!file.dataUrl) return setState({ toast: 'Este archivo no tiene descarga disponible' });
   const anchor = document.createElement('a');
   anchor.href = file.dataUrl;
   anchor.download = file.name;

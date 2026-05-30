@@ -1,4 +1,5 @@
 import { query, mutation } from './_generated/server';
+import { internal } from './_generated/api';
 import { v } from 'convex/values';
 
 function toDoc(fu: any) {
@@ -40,11 +41,15 @@ export const list = query({
 });
 
 export const save = mutation({
-  args: { entitiesJson: v.string() },
-  handler: async (ctx, { entitiesJson }) => {
+  args: { entitiesJson: v.string(), _token: v.optional(v.string()) },
+  handler: async (ctx, { entitiesJson, _token }) => {
+    if (_token && !(await ctx.runQuery(internal.sessions._verify, { token: _token }))) {
+      throw new Error('Sesión inválida o expirada');
+    }
     const items: any[] = JSON.parse(entitiesJson);
-    const newIds = new Set(items.map((i) => i.id));
     const existing = await ctx.db.query('followUps').collect();
+    if (items.length === 0 && existing.length > 0) return;
+    const newIds = new Set(items.map((i) => i.id));
     const existingMap = new Map(existing.map((d) => [d.entityId, d]));
 
     for (const [entityId, doc] of existingMap) {
@@ -54,7 +59,15 @@ export const save = mutation({
       const doc = toDoc(item);
       const prev = existingMap.get(item.id);
       if (prev) {
-        await ctx.db.patch(prev._id, doc);
+        const update = { ...doc };
+        // completedAt is append-only: once set in the DB, no stale sync from
+        // any device can clear it (guards against the race where Device B's
+        // "cancel open follow-ups on stage change" reaches Convex after
+        // Device A's "complete follow-up" already wrote completedAt).
+        if (prev.completedAt && !update.completedAt) {
+          update.completedAt = prev.completedAt;
+        }
+        await ctx.db.patch(prev._id, update);
       } else {
         await ctx.db.insert('followUps', doc as any);
       }

@@ -1,4 +1,5 @@
 import { query, mutation } from './_generated/server';
+import { internal } from './_generated/api';
 import { v } from 'convex/values';
 
 function toDoc(s: any) {
@@ -37,11 +38,15 @@ export const list = query({
 });
 
 export const save = mutation({
-  args: { entitiesJson: v.string() },
-  handler: async (ctx, { entitiesJson }) => {
+  args: { entitiesJson: v.string(), _token: v.optional(v.string()) },
+  handler: async (ctx, { entitiesJson, _token }) => {
+    if (_token && !(await ctx.runQuery(internal.sessions._verify, { token: _token }))) {
+      throw new Error('Sesión inválida o expirada');
+    }
     const items: any[] = JSON.parse(entitiesJson);
-    const newIds = new Set(items.map((i) => i.id));
     const existing = await ctx.db.query('serviceCatalog').collect();
+    if (items.length === 0 && existing.length > 0) return;
+    const newIds = new Set(items.map((i) => i.id));
     const existingMap = new Map(existing.map((d) => [d.entityId, d]));
 
     for (const [entityId, doc] of existingMap) {

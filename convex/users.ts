@@ -109,6 +109,9 @@ export const authenticate = action({
     if (!doc || !doc.passwordHash || doc.status !== 'active') return null;
     const valid = await bcrypt.compare(password, doc.passwordHash);
     if (!valid) return null;
+    const token = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    await ctx.runMutation(internal.sessions._create, { entityId: doc.entityId, token, expiresAt });
     return {
       id:             doc.entityId,
       name:           doc.name,
@@ -122,6 +125,7 @@ export const authenticate = action({
       permissions:    doc.permissions,
       createdAt:      doc.createdAt,
       approvedAt:     doc.approvedAt ?? '',
+      sessionToken:   token,
     };
   },
 });
@@ -151,7 +155,7 @@ export const createUser = action({
       role:           args.role ?? 'Ejecutivo Comercial',
       position:       args.position ?? '',
       status:         'active',
-      isSuperAdmin:   args.isSuperAdmin ?? false,
+      isSuperAdmin:   false,  // never accept from untrusted client
       temporaryAdmin: args.temporaryAdmin ?? false,
       leadAccess:     args.leadAccess ?? 'assigned',
       permissions:    args.permissions ?? [],
@@ -163,8 +167,12 @@ export const createUser = action({
 });
 
 export const changePassword = action({
-  args: { entityId: v.string(), newPassword: v.string() },
-  handler: async (ctx, { entityId, newPassword }) => {
+  args: { entityId: v.string(), oldPassword: v.string(), newPassword: v.string() },
+  handler: async (ctx, { entityId, oldPassword, newPassword }) => {
+    const doc = await ctx.runQuery(internal.users._getByEntityId, { entityId });
+    if (!doc || !doc.passwordHash) throw new Error('No se puede cambiar la contraseña en este momento');
+    const valid = await bcrypt.compare(oldPassword, doc.passwordHash);
+    if (!valid) throw new Error('Contraseña actual incorrecta');
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await ctx.runMutation(internal.users._setPasswordHash, { entityId, passwordHash });
     return { ok: true };
@@ -209,8 +217,11 @@ export const migrateUsers = action({
 // Syncs user metadata (permissions, role, status…) but NEVER touches passwordHash.
 // New users not yet in Convex are skipped — they must be created via createUser action.
 export const saveMetadata = mutation({
-  args: { entitiesJson: v.string() },
-  handler: async (ctx, { entitiesJson }) => {
+  args: { entitiesJson: v.string(), _token: v.optional(v.string()) },
+  handler: async (ctx, { entitiesJson, _token }) => {
+    if (!(await ctx.runQuery(internal.sessions._verify, { token: _token || '' }))) {
+      throw new Error('Sesión requerida para actualizar usuarios');
+    }
     const users: any[] = JSON.parse(entitiesJson);
     for (const user of users) {
       const existing = await ctx.db
@@ -224,7 +235,7 @@ export const saveMetadata = mutation({
         role:           String(user.role ?? existing.role),
         position:       String(user.position ?? existing.position),
         status:         String(user.status ?? existing.status),
-        isSuperAdmin:   Boolean(user.isSuperAdmin),
+        isSuperAdmin:   existing.isSuperAdmin,  // never accept from client
         temporaryAdmin: Boolean(user.temporaryAdmin),
         leadAccess:     String(user.leadAccess ?? existing.leadAccess),
         permissions:    Array.isArray(user.permissions) ? user.permissions : existing.permissions,

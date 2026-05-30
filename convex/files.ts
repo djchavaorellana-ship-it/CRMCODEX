@@ -1,4 +1,4 @@
-import { query, mutation } from './_generated/server';
+import { query, mutation, action } from './_generated/server';
 import { v } from 'convex/values';
 
 function toDoc(f: any) {
@@ -34,6 +34,20 @@ function fromDoc(d: any) {
   };
 }
 
+export const generateUploadUrl = mutation({
+  handler: async (ctx) => {
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const getUrl = query({
+  args: { storageId: v.string() },
+  handler: async (ctx, { storageId }) => {
+    if (!storageId) return null;
+    return await ctx.storage.getUrl(storageId);
+  },
+});
+
 export const list = query({
   handler: async (ctx) => {
     const docs = await ctx.db.query('files').collect();
@@ -42,11 +56,15 @@ export const list = query({
 });
 
 export const save = mutation({
-  args: { entitiesJson: v.string() },
-  handler: async (ctx, { entitiesJson }) => {
+  args: { entitiesJson: v.string(), _token: v.optional(v.string()) },
+  handler: async (ctx, { entitiesJson, _token }) => {
+    if (_token && !(await ctx.runQuery(internal.sessions._verify, { token: _token }))) {
+      throw new Error('Sesión inválida o expirada');
+    }
     const items: any[] = JSON.parse(entitiesJson);
-    const newIds = new Set(items.map((i) => i.id));
     const existing = await ctx.db.query('files').collect();
+    if (items.length === 0 && existing.length > 0) return;
+    const newIds = new Set(items.map((i) => i.id));
     const existingMap = new Map(existing.map((d) => [d.entityId, d]));
 
     for (const [entityId, doc] of existingMap) {
