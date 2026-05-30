@@ -112,11 +112,11 @@ const defaultState = {
 let state = loadState();
 let toastTimer = null;
 
-// --- Convex cross-device sync ---
-// Set VITE_CONVEX_URL in your environment to enable. Without it the app works
-// exactly as before using localStorage only.
+// --- Convex structured sync ---
+// Set VITE_CONVEX_URL to enable cross-device sync. Falls back to localStorage only.
 const CONVEX_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CONVEX_URL) || '';
-let lastConvexStateJson = '';
+let convexSyncTimer = null;
+let lastConvexSaveAt = 0;
 
 function createSeedData() {
   const leads = [
@@ -577,10 +577,8 @@ function stripTransient(nextState) {
 }
 
 function persist() {
-  const data = stripTransient(state);
-  const json = JSON.stringify(data);
-  localStorage.setItem(STORAGE_KEY, json);
-  convexSave(json);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
+  scheduleConvexSync();
 }
 
 function setState(next) {
@@ -593,56 +591,124 @@ function setState(next) {
   }
 }
 
-function convexSave(stateJson) {
-  if (!CONVEX_URL) return;
-  if (stateJson.length > 900_000) return; // stay within Convex 1 MB doc limit
-  lastConvexStateJson = stateJson;
-  fetch(`${CONVEX_URL}/api/mutation`, {
+// --- Convex HTTP helpers ---
+
+async function convexQuery(path, args = {}) {
+  const res = await fetch(`${CONVEX_URL}/api/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: 'state:save', format: 'json', args: { stateJson } }),
-  }).catch(() => {});
+    body: JSON.stringify({ path, format: 'json', args }),
+  });
+  if (!res.ok) throw new Error(`Convex query ${path} → ${res.status}`);
+  const body = await res.json();
+  if (body.status !== 'success') throw new Error(body.errorMessage || 'Convex query failed');
+  return body.value;
+}
+
+async function convexMutation(path, args = {}) {
+  const res = await fetch(`${CONVEX_URL}/api/mutation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, format: 'json', args }),
+  });
+  if (!res.ok) throw new Error(`Convex mutation ${path} → ${res.status}`);
+  const body = await res.json();
+  if (body.status !== 'success') throw new Error(body.errorMessage || 'Convex mutation failed');
+  return body.value;
+}
+
+// --- Structured sync ---
+
+function scheduleConvexSync() {
+  if (!CONVEX_URL) return;
+  clearTimeout(convexSyncTimer);
+  convexSyncTimer = setTimeout(doConvexSync, 800);
+}
+
+async function doConvexSync() {
+  if (!CONVEX_URL) return;
+  const data = stripTransient(state);
+  try {
+    await Promise.all([
+      convexMutation('leads:save', { entitiesJson: JSON.stringify(data.leads) }),
+      convexMutation('followUps:save', { entitiesJson: JSON.stringify(data.followUps) }),
+      convexMutation('quotes:save', { entitiesJson: JSON.stringify(data.quotes) }),
+      convexMutation('timeline:save', { entitiesJson: JSON.stringify(data.timelineEvents) }),
+      convexMutation('users:save', { entitiesJson: JSON.stringify(data.users) }),
+      convexMutation('catalog:save', { entitiesJson: JSON.stringify(data.serviceCatalog) }),
+      convexMutation('files:save', { entitiesJson: JSON.stringify(data.files) }),
+      convexMutation('misc:saveDiscountRequests', { entitiesJson: JSON.stringify(data.discountRequests) }),
+      convexMutation('misc:saveAccessRequests', { entitiesJson: JSON.stringify(data.accessRequests) }),
+    ]);
+    lastConvexSaveAt = Date.now();
+  } catch (e) {
+    console.warn('[TOP CRM] Convex sync failed:', e.message);
+  }
+}
+
+async function loadFromConvex() {
+  try {
+    const [leads, followUps, quotes, timelineEvents, users, serviceCatalog, files, discountRequests, accessRequests] = await Promise.all([
+      convexQuery('leads:list'),
+      convexQuery('followUps:list'),
+      convexQuery('quotes:list'),
+      convexQuery('timeline:list'),
+      convexQuery('users:list'),
+      convexQuery('catalog:list'),
+      convexQuery('files:list'),
+      convexQuery('misc:listDiscountRequests'),
+      convexQuery('misc:listAccessRequests'),
+    ]);
+    return { leads, followUps, quotes, timelineEvents, users, serviceCatalog, files, discountRequests, accessRequests };
+  } catch (e) {
+    console.warn('[TOP CRM] Convex load failed:', e.message);
+    return null;
+  }
+}
+
+function latestUpdatedAt(data) {
+  const stamps = [
+    ...(data.leads || []).map((e) => e.updatedAt || e.createdAt || ''),
+    ...(data.quotes || []).map((e) => e.updatedAt || e.createdAt || ''),
+    ...(data.followUps || []).map((e) => e.createdAt || ''),
+  ];
+  return stamps.sort().at(-1) || '';
 }
 
 async function convexPoll() {
   if (!CONVEX_URL) return;
+  if (Date.now() - lastConvexSaveAt < 12_000) return; // skip if we just saved
   try {
-    const res = await fetch(`${CONVEX_URL}/api/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: 'state:get', format: 'json', args: {} }),
-    });
-    if (!res.ok) return;
-    const body = await res.json();
-    const remoteJson = body.status === 'success' ? body.value?.stateJson : null;
-    if (!remoteJson || remoteJson === lastConvexStateJson) return;
-    lastConvexStateJson = remoteJson;
-    state = hydrateState(JSON.parse(remoteJson));
-    localStorage.setItem(STORAGE_KEY, remoteJson);
+    const remote = await loadFromConvex();
+    if (!remote || !remote.leads) return;
+    const remoteLatest = latestUpdatedAt(remote);
+    const localLatest = latestUpdatedAt(stripTransient(state));
+    if (!remoteLatest || remoteLatest <= localLatest) return;
+    state = hydrateState(remote);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
     render();
   } catch {}
 }
 
-function initConvexSync() {
+async function initConvexSync() {
   if (!CONVEX_URL) return;
-  fetch(`${CONVEX_URL}/api/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: 'state:get', format: 'json', args: {} }),
-  })
-    .then((res) => res.json())
-    .then(({ status, value }) => {
-      if (status !== 'success') return;
-      if (!value?.stateJson) {
-        convexSave(JSON.stringify(stripTransient(state)));
-      } else {
-        lastConvexStateJson = value.stateJson;
-        state = hydrateState(JSON.parse(value.stateJson));
-        localStorage.setItem(STORAGE_KEY, value.stateJson);
-        render();
-      }
-    })
-    .catch(() => {});
+  try {
+    const remote = await loadFromConvex();
+    if (!remote || !remote.leads) {
+      // Convex is empty — seed it from localStorage
+      await doConvexSync();
+    } else if (remote.leads.length > 0) {
+      // Convex has data — use it as authoritative source
+      state = hydrateState(remote);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
+      render();
+    } else {
+      // Convex is connected but tables are empty — seed it
+      await doConvexSync();
+    }
+  } catch (e) {
+    console.warn('[TOP CRM] Convex init failed, using localStorage:', e.message);
+  }
   setInterval(convexPoll, 15_000);
 }
 
