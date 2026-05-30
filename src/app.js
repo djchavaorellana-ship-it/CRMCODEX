@@ -107,6 +107,7 @@ const defaultState = {
   dismissedUrgentId: '',
   contextMenu: null,
   userMenuOpen: false,
+  bnavMoreOpen: false,
 };
 
 let state = loadState();
@@ -501,6 +502,7 @@ function hydrateState(raw) {
     dismissedUrgentId: '',
     contextMenu: null,
     userMenuOpen: false,
+    bnavMoreOpen: false,
   };
 }
 
@@ -531,6 +533,7 @@ function emptyInitializedState() {
     dismissedUrgentId: '',
     contextMenu: null,
     userMenuOpen: false,
+    bnavMoreOpen: false,
   };
 }
 
@@ -572,7 +575,7 @@ function migrateLegacyState(raw) {
 }
 
 function stripTransient(nextState) {
-  const { drawer, toast, draggingLeadId, dismissedUrgentId, contextMenu, userMenuOpen, ...persistable } = nextState;
+  const { drawer, toast, draggingLeadId, dismissedUrgentId, contextMenu, userMenuOpen, bnavMoreOpen, ...persistable } = nextState;
   return persistable;
 }
 
@@ -914,6 +917,7 @@ function render() {
       ${urgentAlert ? urgentPopup(urgentAlert.lead, urgentAlert.followup) : ''}
       ${contextMenu()}
       ${state.toast ? `<div class="toast">${state.toast}</div>` : ''}
+      ${bottomNav()}
     </div>
   `;
   bindEvents();
@@ -936,6 +940,35 @@ function sidebar() {
       </nav>
       ${can('create_leads') ? '<button class="collapse" type="button" data-action="new-lead">+ Nuevo lead</button>' : ''}
     </aside>
+  `;
+}
+
+function bottomNav() {
+  const mainItems = [
+    ['dashboard', '⌁', 'Inicio'],
+    ['leads', '○', 'Leads'],
+    ['pipeline', '▦', 'Pipeline'],
+    ['cotizaciones', '□', 'Cotizac.'],
+  ].filter(([key]) => can(viewPermissions[key]));
+  const moreItems = [
+    ['inbox', '◌', 'Inbox'],
+    ['clientes', '◇', 'Clientes'],
+    ['calendario', '◴', 'Agenda'],
+    ['marketing', '◈', 'Marketing'],
+    ['reportes', '▥', 'Reportes'],
+    ['usuarios', '◍', 'Usuarios'],
+    ['configuracion', '⚙', 'Config.'],
+  ].filter(([key]) => can(viewPermissions[key]));
+  const moreActive = moreItems.some(([key]) => state.view === key);
+  return `
+    ${state.bnavMoreOpen ? '<div class="bnav-backdrop" data-action="toggle-bnav-more"></div>' : ''}
+    <nav class="bottom-nav" aria-label="Navegacion principal">
+      ${mainItems.map(([key, icon, label]) => `<button class="bnav-item ${state.view === key ? 'active' : ''}" data-view="${key}" type="button"><span class="bnav-icon">${icon}</span><span class="bnav-label">${label}</span></button>`).join('')}
+      <button class="bnav-item ${moreActive ? 'active' : ''}" type="button" data-action="toggle-bnav-more">
+        <span class="bnav-icon">☰</span><span class="bnav-label">Más</span>
+      </button>
+      ${state.bnavMoreOpen ? `<div class="bnav-more-panel">${moreItems.map(([key, icon, label]) => `<button class="bnav-more-item ${state.view === key ? 'active' : ''}" data-view="${key}" type="button"><span>${icon}</span>${label}</button>`).join('')}</div>` : ''}
+    </nav>
   `;
 }
 
@@ -1286,7 +1319,7 @@ function quoteEditorForm(quote, lead, exists) {
     <label class="checkbox-line"><input type="checkbox" name="current" ${quote.current ? 'checked' : ''} />Marcar esta version como vigente</label>
     <div class="quote-editor-tools"><button class="secondary-button compact" type="button" data-action="add-quote-category" data-quote="${quote.id}">+ Agregar categoría</button></div>
     <div class="quote-items-editor">${editorCategories.map((category, index) => quoteCategoryEditor(category, items.filter((item) => item.category === category), index, quote.id, editorCategories, priceAllowed)).join('')}</div>
-    <div class="form-grid">${select('Tipo de descuento', 'discountType', quote.discountType, [['fixed', 'Descuento fijo'], ['percent', 'Descuento porcentual']])}<label class="form-field"><span>Descuento</span><input name="discount" type="number" min="0" step="0.01" value="${quote.discount}" ${priceAllowed ? '' : 'readonly title="No tienes permiso para modificar precios o descuentos."'} /></label></div>
+    <div class="form-grid">${select('Tipo de descuento', 'discountType', quote.discountType, [['fixed', 'Descuento fijo'], ['percent', 'Descuento porcentual']])}<label class="form-field"><span>Descuento</span><input name="discount" type="number" min="0" step="0.01" inputmode="decimal" value="${quote.discount}" ${priceAllowed ? '' : 'readonly title="No tienes permiso para modificar precios o descuentos."'} /></label></div>
     ${priceAllowed ? '' : '<div class="form-note">No tienes permiso para modificar precios o descuentos.</div><button class="secondary-button compact" type="button" data-action="request-discount" data-quote="' + quote.id + '">Solicitar autorización de descuento</button>'}
     <label class="checkbox-line iva-line"><input type="checkbox" name="ivaEnabled" ${quote.ivaEnabled ? 'checked' : ''} />Agregar IVA 16%</label>
     <div class="quote-visibility-block">
@@ -1329,8 +1362,8 @@ function quoteCategoryEditor(category, items, index, quoteId, categories, priceA
     <label><span>Categoría</span><select name="itemMoveCategory">${categories.map((option) => `<option value="${escapeHtml(option)}" ${option === category ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select></label>
     <label><span>Nombre</span><input name="itemName" value="${escapeHtml(item.name)}" ${priceAllowed || item.serviceId ? '' : 'readonly'} /></label>
     <label><span>Descripción</span><input name="itemDescription" value="${escapeHtml(item.description)}" ${priceAllowed || item.serviceId ? '' : 'readonly'} /></label>
-    <label><span>Cant.</span><input name="itemQuantity" type="number" min="0" step="0.01" value="${item.quantity}" /></label>
-    <label><span>Precio unit.</span><input name="itemUnitPrice" type="number" min="0" step="0.01" value="${item.unitPrice}" ${priceAllowed ? '' : 'readonly title="No tienes permiso para modificar precios o descuentos."'} /></label>
+    <label><span>Cant.</span><input name="itemQuantity" type="number" min="0" step="0.01" inputmode="decimal" value="${item.quantity}" /></label>
+    <label><span>Precio unit.</span><input name="itemUnitPrice" type="number" min="0" step="0.01" inputmode="decimal" value="${item.unitPrice}" ${priceAllowed ? '' : 'readonly title="No tienes permiso para modificar precios o descuentos."'} /></label>
     <div class="quote-item-actions" data-item-context="${item.id}" data-quote="${quoteId}"><button type="button" data-action="duplicate-quote-item" data-quote="${quoteId}" data-item="${item.id}">Duplicar</button><button type="button" class="danger-action" data-action="delete-quote-item" data-quote="${quoteId}" data-item="${item.id}">Eliminar</button></div>
   </div>`).join('')}</section>`;
 }
@@ -1547,7 +1580,7 @@ function remindersCard() {
 }
 
 function kanbanCard(lead) {
-  return `<article class="kanban-card" draggable="true" data-drag-lead="${lead.id}" data-select-lead="${lead.id}" data-lead-context="${lead.id}"><div class="section-head"><strong>${lead.name}</strong>${badge(lead.priority)}</div><p>${lead.eventType} · ${dateLabel(lead.eventDate)}</p><span>${money(lead.potential)}</span></article>`;
+  return `<article class="kanban-card" draggable="true" data-drag-lead="${lead.id}" data-select-lead="${lead.id}" data-lead-context="${lead.id}"><div class="section-head"><strong>${lead.name}</strong>${badge(lead.priority)}</div><p>${lead.eventType} · ${dateLabel(lead.eventDate)}</p><span>${money(lead.potential)}</span><button class="kanban-move-btn" type="button" data-action="kanban-move-stage" data-lead="${lead.id}">Mover etapa →</button></article>`;
 }
 
 function drawer() {
@@ -1568,7 +1601,7 @@ function drawer() {
     'service-form': state.drawer.mode === 'edit' ? 'Editar servicio' : 'Nuevo servicio',
     'user-form': 'Nuevo usuario',
   }[state.drawer.type];
-  return `<div class="drawer-backdrop" data-action="close-drawer"></div><aside class="drawer" aria-label="${title}"><header><div><p class="eyebrow">TOP CRM</p><h2>${title}</h2></div><button class="icon-button" type="button" data-action="close-drawer">×</button></header>${drawerBody(lead)}</aside>`;
+  return `<div class="drawer-backdrop" data-action="close-drawer"></div><aside class="drawer" aria-label="${title}"><div class="drawer-handle"></div><header><div><p class="eyebrow">TOP CRM</p><h2>${title}</h2></div><button class="icon-button" type="button" data-action="close-drawer">×</button></header>${drawerBody(lead)}</aside>`;
 }
 
 function drawerBody(lead) {
@@ -1673,12 +1706,12 @@ function userForm() {
 }
 
 function input(label, name, value, required = false, type = 'text') {
-  const numberAttrs = type === 'number' ? 'min="0" step="0.01"' : '';
+  const numberAttrs = type === 'number' ? 'min="0" step="0.01" inputmode="decimal"' : '';
   return `<label class="form-field"><span>${label}</span><input name="${name}" type="${type}" ${numberAttrs} value="${escapeHtml(value ?? '')}" ${required ? 'required' : ''} /></label>`;
 }
 
 function numberInput(label, name, value, required = false) {
-  return `<label class="form-field"><span>${label}</span><input name="${name}" type="number" min="0" step="0.01" value="${escapeHtml(value ?? '')}" ${required ? 'required' : ''} /></label>`;
+  return `<label class="form-field"><span>${label}</span><input name="${name}" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(value ?? '')}" ${required ? 'required' : ''} /></label>`;
 }
 
 function select(label, name, value, options) {
@@ -1697,7 +1730,7 @@ function bindEvents() {
   document.querySelectorAll('[data-view]').forEach((node) => node.addEventListener('click', (event) => {
     event.preventDefault();
     if (!requirePermission(viewPermissions[node.dataset.view])) return;
-    setState({ view: node.dataset.view, userMenuOpen: false });
+    setState({ view: node.dataset.view, userMenuOpen: false, bnavMoreOpen: false });
   }));
   document.querySelector('[data-search]')?.addEventListener('input', (event) => {
     state.search = event.target.value;
@@ -1811,6 +1844,11 @@ function handleAction(event, action) {
   if (action === 'show-login') return setState({ drawer: null, toast: '' });
   if (action === 'google-login') return setState({ toast: 'Google OAuth esta simulado por ahora. Usa correo y contraseña.' });
   if (action === 'toggle-user-menu') return setState({ userMenuOpen: !state.userMenuOpen });
+  if (action === 'toggle-bnav-more') return setState({ bnavMoreOpen: !state.bnavMoreOpen });
+  if (action === 'kanban-move-stage') {
+    event.stopPropagation();
+    return requirePermission('move_leads') && setState({ selectedLeadId: target.dataset.lead, drawer: { type: 'stage-form' }, bnavMoreOpen: false });
+  }
   if (action === 'logout') return setState({ currentUserId: null, userMenuOpen: false, drawer: null, toast: '' });
   if (action === 'profile') return setState({ drawer: { type: 'profile' }, userMenuOpen: false });
   if (action === 'change-password') return setState({ drawer: { type: 'password' }, userMenuOpen: false });
