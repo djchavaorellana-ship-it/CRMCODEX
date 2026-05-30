@@ -1947,7 +1947,7 @@ h1 {
   border-radius: 8px;
 }
 
-.service-row:has(.service-drag-handle) {
+.service-row--admin {
   grid-template-columns: 24px minmax(0, 1fr) minmax(112px, 140px) max-content max-content;
 }
 
@@ -2587,7 +2587,7 @@ h1 {
   }
 
   .service-row,
-  .service-row:has(.service-drag-handle),
+  .service-row--admin,
   .pdf-meta,
   .pdf-row {
     grid-template-columns: 1fr;
