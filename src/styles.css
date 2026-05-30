@@ -1249,18 +1249,88 @@ h1 {
   min-width: 0;
 }
 
-.quote-module {
-  display: grid;
-  grid-template-columns: 290px 1fr;
-  gap: 14px;
+.quote-workspace {
+  display: flex;
   align-items: start;
+  gap: 0;
+  width: 100%;
 }
 
-.quote-sidebar {
+.quote-panel {
+  overflow: auto;
+}
+
+.quote-panel--history {
   position: sticky;
   top: 86px;
   max-height: calc(100vh - 110px);
   overflow: auto;
+  flex: 0 0 290px;
+  width: 290px;
+  min-width: 160px;
+  max-width: 440px;
+}
+
+.quote-panel--editor,
+.quote-panel--preview {
+  flex: 1 1 0;
+  min-width: 260px;
+  overflow: hidden;
+}
+
+.quote-resizer {
+  flex: 0 0 10px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.quote-resizer::after {
+  content: '';
+  display: block;
+  width: 2px;
+  height: 40px;
+  background: var(--line);
+  border-radius: 2px;
+  transition: background 0.15s;
+}
+
+.quote-resizer:hover::after,
+.quote-resizer.is-dragging::after {
+  background: var(--green);
+}
+
+.quote-mobile-tabs {
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.quote-mobile-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.quote-mobile-tabs button.active {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+  background: color-mix(in srgb, var(--green-soft) 40%, var(--surface));
+  color: var(--text);
+  font-weight: 650;
 }
 
 .quote-list {
@@ -1302,62 +1372,6 @@ h1 {
   font-size: 11px;
 }
 
-.quote-editor-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.quote-editor-layout.focus-editor {
-  grid-template-columns: 1fr;
-}
-
-.quote-editor-layout.focus-editor > :last-child {
-  display: none;
-}
-
-.quote-editor-layout.focus-preview {
-  grid-template-columns: 1fr;
-}
-
-.quote-editor-layout.focus-preview > :first-child {
-  display: none;
-}
-
-.quote-editor-wrapper {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.quote-focus-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.quote-focus-tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 30px;
-  padding: 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.quote-focus-tabs button.active {
-  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
-  background: color-mix(in srgb, var(--green-soft) 40%, var(--surface));
-  color: var(--text);
-  font-weight: 650;
-}
 
 .quote-editor {
   padding: 0;
@@ -2162,14 +2176,9 @@ h1 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .quote-module,
-  .quote-editor-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .quote-sidebar {
-    position: static;
-    max-height: none;
+  .quote-panel--history {
+    min-width: 200px;
+    max-width: 320px;
   }
 
   .table-card {
@@ -2514,26 +2523,33 @@ h1 {
     background: var(--surface);
   }
 
-  .quote-module {
-    gap: 12px;
-  }
-
-  .quote-sidebar {
-    margin-inline: -12px;
-    padding-inline: 12px;
-    overflow-x: auto;
-  }
-
-  .quote-list {
+  .quote-mobile-tabs {
     display: flex;
-    gap: 10px;
-    padding-bottom: 2px;
   }
 
-  .quote-list-item {
-    flex: 0 0 min(290px, 82vw);
-    min-height: 86px;
-    border-radius: 12px;
+  .quote-workspace {
+    flex-direction: column;
+  }
+
+  .quote-resizer {
+    display: none;
+  }
+
+  .quote-panel--history,
+  .quote-panel--editor,
+  .quote-panel--preview {
+    display: none;
+    width: 100% !important;
+    flex: none !important;
+    position: static;
+    max-height: none;
+    min-width: 0;
+  }
+
+  .quote-workspace[data-qfocus="history"] .quote-panel--history,
+  .quote-workspace[data-qfocus="editor"] .quote-panel--editor,
+  .quote-workspace[data-qfocus="preview"] .quote-panel--preview {
+    display: block;
   }
 
   .quote-editor-card {
@@ -2666,7 +2682,6 @@ h1 {
     width: 100%;
   }
 
-  .quote-sidebar,
   .priority-filters,
   .kanban {
     margin-inline: -10px;

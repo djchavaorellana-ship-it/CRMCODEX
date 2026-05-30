@@ -121,6 +121,8 @@ const CONVEX_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_
 let convexSyncTimer = null;
 let lastConvexSaveAt = 0;
 let isSyncing = false;
+const QUOTE_LAYOUT_KEY = 'crm-quote-workspace';
+let quoteResizersBound = false;
 
 function createSeedData() {
   const leads = [
@@ -581,6 +583,7 @@ function migrateLegacyState(raw) {
 
 function stripTransient(nextState) {
   const { drawer, toast, draggingLeadId, dismissedUrgentId, contextMenu, userMenuOpen, bnavMoreOpen, sessionToken, ...persistable } = nextState;
+  if (!CONVEX_URL) return persistable;
   return {
     ...persistable,
     users: (persistable.users || []).map(({ password, ...u }) => u),
@@ -931,6 +934,85 @@ function dashboardActionLeads() {
   });
 }
 
+function getQuoteLayout() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(QUOTE_LAYOUT_KEY) || '{}');
+    return {
+      historyWidth: Math.min(440, Math.max(160, stored.historyWidth || 290)),
+      editorFlex: Math.min(4, Math.max(0.25, stored.editorFlex || 1)),
+    };
+  } catch {
+    return { historyWidth: 290, editorFlex: 1 };
+  }
+}
+
+function applyQuoteLayout() {
+  const { historyWidth, editorFlex } = getQuoteLayout();
+  const histPanel = document.querySelector('.quote-panel--history');
+  const editorPanel = document.querySelector('.quote-panel--editor');
+  if (histPanel) {
+    histPanel.style.width = historyWidth + 'px';
+    histPanel.style.flexBasis = historyWidth + 'px';
+  }
+  if (editorPanel) {
+    editorPanel.style.flexGrow = editorFlex;
+  }
+}
+
+function initQuoteResizers() {
+  if (quoteResizersBound) return;
+  quoteResizersBound = true;
+
+  let activeResizer = null;
+  let startX = 0;
+  let startHistW = 0;
+  let startEditorW = 0;
+  let startPreviewW = 0;
+
+  document.addEventListener('mousedown', (e) => {
+    const rz = e.target.closest('[data-resize]');
+    if (!rz) return;
+    e.preventDefault();
+    activeResizer = rz;
+    rz.classList.add('is-dragging');
+    startX = e.clientX;
+    if (rz.dataset.resize === 'history') {
+      startHistW = document.querySelector('.quote-panel--history')?.getBoundingClientRect().width || 290;
+    } else {
+      const ep = document.querySelector('.quote-panel--editor');
+      const pp = document.querySelector('.quote-panel--preview');
+      startEditorW = ep?.getBoundingClientRect().width || 400;
+      startPreviewW = pp?.getBoundingClientRect().width || 400;
+    }
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!activeResizer) return;
+    const dx = e.clientX - startX;
+    const layout = getQuoteLayout();
+    if (activeResizer.dataset.resize === 'history') {
+      const newW = Math.min(440, Math.max(160, startHistW + dx));
+      const histPanel = document.querySelector('.quote-panel--history');
+      if (histPanel) { histPanel.style.width = newW + 'px'; histPanel.style.flexBasis = newW + 'px'; }
+      localStorage.setItem(QUOTE_LAYOUT_KEY, JSON.stringify({ ...layout, historyWidth: Math.round(newW) }));
+    } else {
+      const ep = document.querySelector('.quote-panel--editor');
+      if (!ep) return;
+      const newEditorW = Math.max(260, Math.min(startEditorW + dx, startEditorW + startPreviewW - 260));
+      const newPreviewW = Math.max(260, startEditorW + startPreviewW - newEditorW);
+      const newFlex = Math.round((newEditorW / newPreviewW) * 100) / 100;
+      ep.style.flexGrow = newFlex;
+      localStorage.setItem(QUOTE_LAYOUT_KEY, JSON.stringify({ ...layout, editorFlex: newFlex }));
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!activeResizer) return;
+    activeResizer.classList.remove('is-dragging');
+    activeResizer = null;
+  });
+}
+
 function render() {
   const urgentAlert = urgentFollowupAlert();
   document.documentElement.classList.toggle('dark', state.darkMode);
@@ -1195,23 +1277,21 @@ function quotesView() {
   const quote = selectedQuote() || quotes[0];
   const lead = state.leads.find((item) => item.id === quote.leadId) || selectedLead();
   return `
-    ${pageHead('Cotizaciones', 'Modulo de cotizaciones', 'Crea versiones, edita conceptos y comparte propuestas profesionales.', [['new-quote', 'Nueva cotizacion']])}
-    <div class="quote-module">
-      <aside class="card quote-sidebar">
+    ${pageHead('Cotizaciones', 'Modulo de cotizaciones', 'Crea versiones, edita conceptos y comparte propuestas profesionales.', [['new-quote', 'Nueva cotizacion'], ['reset-quote-layout', 'Restablecer layout']])}
+    <div class="quote-mobile-tabs">
+      <button type="button" data-qfocus-btn="history" class="active">☰ Historial</button>
+      <button type="button" data-qfocus-btn="editor">✎ Editor</button>
+      <button type="button" data-qfocus-btn="preview">□ Preview</button>
+    </div>
+    <div class="quote-workspace" id="quote-workspace" data-qfocus="history">
+      <aside class="card quote-panel quote-panel--history">
         <div class="section-head"><div><div class="card-title">Historial</div><p>Versiones guardadas por lead.</p></div></div>
-        <div class="quote-list">${quotes.length ? quotes.map(quoteListItem).join('') : '<div class="empty-panel">Todavia no hay cotizaciones.</div>'}</div>
+        <div class="quote-list">${quotes.map(quoteListItem).join('')}</div>
       </aside>
-      <div class="quote-editor-wrapper">
-        <div class="quote-focus-tabs">
-          <button type="button" data-action="quote-focus-both" class="active">⊞ Editor + Preview</button>
-          <button type="button" data-action="quote-focus-editor">⊡ Solo editor</button>
-          <button type="button" data-action="quote-focus-preview">□ Solo preview</button>
-        </div>
-        <section class="quote-editor-layout" id="quote-editor-layout">
-          <article class="card quote-editor-card">${quoteEditorForm(quote, lead, state.quotes.some((item) => item.id === quote.id))}</article>
-          <article class="card quote-preview-card">${quotePreview(quote, lead)}</article>
-        </section>
-      </div>
+      <div class="quote-resizer" data-resize="history" title="Arrastra para redimensionar"></div>
+      <article class="card quote-editor-card quote-panel quote-panel--editor">${quoteEditorForm(quote, lead, state.quotes.some((item) => item.id === quote.id))}</article>
+      <div class="quote-resizer" data-resize="editor" title="Arrastra para redimensionar"></div>
+      <article class="card quote-preview-card quote-panel quote-panel--preview">${quotePreview(quote, lead)}</article>
     </div>
   `;
 }
@@ -1894,6 +1974,18 @@ function bindEvents() {
       setState({ serviceCatalog: catalog.map((s, idx) => ({ ...s, sortOrder: idx })), toast: 'Orden guardado' });
     });
   });
+
+  applyQuoteLayout();
+  initQuoteResizers();
+
+  document.querySelectorAll('[data-qfocus-btn]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const workspace = document.querySelector('#quote-workspace');
+      if (workspace) workspace.dataset.qfocus = btn.dataset.qfocusBtn;
+      document.querySelectorAll('[data-qfocus-btn]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
 }
 
 function bindAuthEvents() {
@@ -1967,14 +2059,10 @@ function handleAction(event, action) {
   if (action === 'delete-service') return deleteService(target.dataset.service);
   if (action === 'approve-discount') return approveDiscountRequest(target.dataset.request);
   if (action === 'close-drawer') return setState({ drawer: null });
-  if (action.startsWith('quote-focus-')) {
-    const layout = document.querySelector('#quote-editor-layout');
-    if (!layout) return;
-    layout.classList.remove('focus-editor', 'focus-preview');
-    document.querySelectorAll('.quote-focus-tabs button').forEach((btn) => btn.classList.remove('active'));
-    event.currentTarget.classList.add('active');
-    if (action === 'quote-focus-editor') layout.classList.add('focus-editor');
-    if (action === 'quote-focus-preview') layout.classList.add('focus-preview');
+  if (action === 'reset-quote-layout') {
+    localStorage.removeItem(QUOTE_LAYOUT_KEY);
+    applyQuoteLayout();
+    setState({ toast: 'Layout restablecido' });
     return;
   }
   if (action === 'new-lead') return requirePermission('create_leads') && setState({ drawer: { type: 'lead-form', mode: 'new' } });
