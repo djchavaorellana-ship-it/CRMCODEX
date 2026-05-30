@@ -90,6 +90,8 @@ const defaultState = {
   timelineEvents: seed.timelineEvents,
   users: seedUsers,
   accessRequests: [],
+  deletedUserIds: [],
+  deletedUsersUpdatedAt: '',
   discountRequests: [],
   serviceCatalog: createSeedServiceCatalog(),
   crmInitialized: true,
@@ -485,7 +487,9 @@ function hydrateState(raw) {
   const base = structuredClone(defaultState);
   const leads = Array.isArray(raw.leads) ? raw.leads.map(leadEntity) : base.leads;
   const quotes = assignQuoteCodes(Array.isArray(raw.quotes) ? raw.quotes.map(quoteEntity).filter((item) => item.leadId) : []);
-  const users = mergeSeedUsers(Array.isArray(raw.users) ? raw.users.map(userEntity) : base.users);
+  const deletedUserIds = Array.isArray(raw.deletedUserIds) ? raw.deletedUserIds.filter((id) => typeof id === 'string') : [];
+  const userSource = Array.isArray(raw.users) ? raw.users : base.users;
+  const users = mergeSeedUsers(userSource.map(userEntity), deletedUserIds);
   const currentUserId = users.some((user) => user.id === raw.currentUserId && user.status === 'active') ? raw.currentUserId : null;
   return {
     ...base,
@@ -493,6 +497,8 @@ function hydrateState(raw) {
     crmInitialized: true,
     leads,
     users,
+    deletedUserIds,
+    deletedUsersUpdatedAt: raw.deletedUsersUpdatedAt || '',
     accessRequests: Array.isArray(raw.accessRequests) ? raw.accessRequests.map(accessRequestEntity) : [],
     discountRequests: Array.isArray(raw.discountRequests) ? raw.discountRequests.map(discountRequestEntity) : [],
     serviceCatalog: Array.isArray(raw.serviceCatalog) ? raw.serviceCatalog.map(serviceEntity) : base.serviceCatalog,
@@ -524,6 +530,8 @@ function emptyInitializedState() {
     timelineEvents: [],
     users,
     accessRequests: [],
+    deletedUserIds: [],
+    deletedUsersUpdatedAt: '',
     discountRequests: [],
     serviceCatalog: [],
     crmInitialized: true,
@@ -703,6 +711,8 @@ function latestUpdatedAt(data) {
     ...(data.files || []).map((e) => e.uploadedAt || ''),
     ...(data.discountRequests || []).map((e) => e.decidedAt || e.createdAt || ''),
     ...(data.accessRequests || []).map((e) => e.decidedAt || e.createdAt || ''),
+    ...(data.users || []).map((e) => e.updatedAt || e.approvedAt || e.createdAt || ''),
+    data.deletedUsersUpdatedAt || '',
   ];
   return stamps.sort().at(-1) || '';
 }
@@ -716,9 +726,9 @@ async function convexPoll() {
     const remoteLatest = latestUpdatedAt(remote);
     const localLatest = latestUpdatedAt(stripTransient(state));
     if (!remoteLatest || remoteLatest <= localLatest) return;
-    const { view, search, activePriority, leadStatusFilter, pipelineFilter, darkMode, currentUserId, selectedLeadId, selectedQuoteId, dismissedUrgentId } = state;
-    state = hydrateState(remote);
-    Object.assign(state, { view, search, activePriority, leadStatusFilter, pipelineFilter, darkMode, currentUserId, selectedLeadId, selectedQuoteId, dismissedUrgentId });
+    const { view, search, activePriority, leadStatusFilter, pipelineFilter, darkMode, currentUserId, selectedLeadId, selectedQuoteId, dismissedUrgentId, deletedUserIds, deletedUsersUpdatedAt } = state;
+    state = hydrateState({ ...remote, deletedUserIds, deletedUsersUpdatedAt });
+    Object.assign(state, { view, search, activePriority, leadStatusFilter, pipelineFilter, darkMode, currentUserId, selectedLeadId, selectedQuoteId, dismissedUrgentId, deletedUserIds, deletedUsersUpdatedAt });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
     render();
   } catch {}
@@ -735,10 +745,13 @@ async function initConvexSync() {
       remote.users?.length > 0
     );
     if (hasConvexData) {
-      // Convex has data — use it as authoritative source
-      state = hydrateState(remote);
+      // Convex has data, but respect local user-deletion tombstones so removed users do not resurrect.
+      const deletedUserIds = Array.isArray(state.deletedUserIds) ? state.deletedUserIds : [];
+      const deletedUsersUpdatedAt = state.deletedUsersUpdatedAt || '';
+      state = hydrateState({ ...remote, deletedUserIds, deletedUsersUpdatedAt });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stripTransient(state)));
       render();
+      if (deletedUserIds.length) scheduleConvexSync();
     } else if (remote) {
       // Connected but empty — migrate from localStorage (hash passwords in Convex)
       const data = stripTransient(state);
@@ -762,8 +775,9 @@ async function initConvexSync() {
   setInterval(convexPoll, 15_000);
 }
 
-function mergeSeedUsers(users) {
-  const byId = new Map(users.map((user) => [user.id, user]));
+function mergeSeedUsers(users, deletedUserIds = []) {
+  const deleted = new Set(deletedUserIds);
+  const byId = new Map(users.filter((user) => user.isSuperAdmin || !deleted.has(user.id)).map((user) => [user.id, user]));
   seedUsers.forEach((seedUser) => {
     const existing = byId.get(seedUser.id);
     if (existing) {
@@ -2465,13 +2479,26 @@ function deleteService(id) {
   });
 }
 
-function deleteUser(id) {
+async function deleteUser(id) {
   if (!currentUser()?.isSuperAdmin) return requirePermission('manage_users');
   const user = state.users.find((u) => u.id === id);
   if (!user || user.isSuperAdmin) return;
   if (user.id === state.currentUserId) return setState({ toast: 'No puedes eliminar tu propia cuenta.' });
   if (!window.confirm(`¿Eliminar al usuario "${user.name}"? Esta acción no se puede deshacer.`)) return;
-  setState({ users: state.users.filter((u) => u.id !== id), toast: `Usuario eliminado: ${user.name}` });
+  const deletedUserIds = [...new Set([...(state.deletedUserIds || []), id])];
+  setState({
+    users: state.users.filter((u) => u.id !== id),
+    deletedUserIds,
+    deletedUsersUpdatedAt: new Date().toISOString(),
+    toast: `Usuario eliminado: ${user.name}`,
+  });
+  if (!CONVEX_URL) return;
+  try {
+    await convexMutation('users:deleteUser', { entityId: id });
+  } catch (error) {
+    console.warn('[TOP CRM] Remote user delete failed:', error?.message || error);
+    setState({ toast: 'Usuario eliminado localmente. Si reaparece en otro equipo, inicia sesión de nuevo y elimínalo otra vez.' });
+  }
 }
 
 function toggleTemporaryAdmin(id) {

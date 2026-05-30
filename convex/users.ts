@@ -254,3 +254,20 @@ export const saveMetadata = mutation({
     }
   },
 });
+
+
+export const deleteUser = mutation({
+  args: { entityId: v.string(), _token: v.optional(v.string()) },
+  handler: async (ctx, { entityId, _token }) => {
+    if (!(await ctx.runQuery(internal.sessions._verify, { token: _token || '' }))) {
+      throw new Error('Sesión requerida para eliminar usuarios');
+    }
+    const existing = await ctx.db
+      .query('users')
+      .withIndex('by_entityId', (q) => q.eq('entityId', entityId))
+      .first();
+    if (!existing || existing.isSuperAdmin) return { deleted: false };
+    await ctx.db.delete(existing._id);
+    return { deleted: true };
+  },
+});
