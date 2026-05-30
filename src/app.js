@@ -1708,21 +1708,53 @@ function bindEvents() {
   document.querySelectorAll('[data-lead-status-filter]').forEach((node) => node.addEventListener('click', () => setState({ leadStatusFilter: node.dataset.leadStatusFilter })));
   document.querySelectorAll('[data-pipeline-filter]').forEach((node) => node.addEventListener('click', () => setState({ pipelineFilter: node.dataset.pipelineFilter })));
   document.querySelectorAll('[data-select-lead]').forEach((node) => node.addEventListener('click', () => setState({ selectedLeadId: node.dataset.selectLead })));
-  document.querySelectorAll('[data-lead-context]').forEach((node) => node.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    setState({
-      selectedLeadId: node.dataset.leadContext,
-      contextMenu: { leadId: node.dataset.leadContext, x: event.clientX, y: event.clientY },
+  const addLongPress = (node, callback) => {
+    let timer = null;
+    let startX, startY;
+    node.addEventListener('touchstart', (event) => {
+      const touch = event.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      timer = window.setTimeout(() => {
+        timer = null;
+        navigator.vibrate?.(50);
+        callback(touch.clientX, touch.clientY);
+      }, 500);
+    }, { passive: true });
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    node.addEventListener('touchend', cancel);
+    node.addEventListener('touchcancel', cancel);
+    node.addEventListener('touchmove', (event) => {
+      if (timer) {
+        const touch = event.touches[0];
+        if (Math.abs(touch.clientX - startX) > 8 || Math.abs(touch.clientY - startY) > 8) cancel();
+      }
+    }, { passive: true });
+  };
+  document.querySelectorAll('[data-lead-context]').forEach((node) => {
+    node.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      if (state.contextMenu) return;
+      setState({ selectedLeadId: node.dataset.leadContext, contextMenu: { leadId: node.dataset.leadContext, x: event.clientX, y: event.clientY } });
     });
-  }));
-  document.querySelectorAll('[data-quote-context]').forEach((node) => node.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    setState({ selectedQuoteId: node.dataset.quoteContext, contextMenu: { type: 'quote', quoteId: node.dataset.quoteContext, x: event.clientX, y: event.clientY } });
-  }));
-  document.querySelectorAll('[data-item-context]').forEach((node) => node.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    setState({ contextMenu: { type: 'item', quoteId: node.dataset.quote, itemId: node.dataset.itemContext, x: event.clientX, y: event.clientY } });
-  }));
+    addLongPress(node, (x, y) => setState({ selectedLeadId: node.dataset.leadContext, contextMenu: { leadId: node.dataset.leadContext, x, y } }));
+  });
+  document.querySelectorAll('[data-quote-context]').forEach((node) => {
+    node.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      if (state.contextMenu) return;
+      setState({ selectedQuoteId: node.dataset.quoteContext, contextMenu: { type: 'quote', quoteId: node.dataset.quoteContext, x: event.clientX, y: event.clientY } });
+    });
+    addLongPress(node, (x, y) => setState({ selectedQuoteId: node.dataset.quoteContext, contextMenu: { type: 'quote', quoteId: node.dataset.quoteContext, x, y } }));
+  });
+  document.querySelectorAll('[data-item-context]').forEach((node) => {
+    node.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      if (state.contextMenu) return;
+      setState({ contextMenu: { type: 'item', quoteId: node.dataset.quote, itemId: node.dataset.itemContext, x: event.clientX, y: event.clientY } });
+    });
+    addLongPress(node, (x, y) => setState({ contextMenu: { type: 'item', quoteId: node.dataset.quote, itemId: node.dataset.itemContext, x, y } }));
+  });
   document.querySelectorAll('[data-action]').forEach((node) => node.addEventListener('click', (event) => handleAction(event, node.dataset.action)));
   document.querySelectorAll('[data-context-action]').forEach((node) => node.addEventListener('click', (event) => handleContextAction(event, node.dataset.contextAction, node.dataset.lead)));
   document.querySelectorAll('[data-quote-context-action]').forEach((node) => node.addEventListener('click', (event) => handleQuoteContextAction(event, node.dataset.quoteContextAction, node.dataset.quote)));
