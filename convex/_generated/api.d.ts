@@ -14,6 +14,7 @@ import type * as followUps from "../followUps.js";
 import type * as leads from "../leads.js";
 import type * as misc from "../misc.js";
 import type * as quotes from "../quotes.js";
+import type * as settings from "../settings.js";
 import type * as timeline from "../timeline.js";
 import type * as users from "../users.js";
 
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   leads: typeof leads;
   misc: typeof misc;
   quotes: typeof quotes;
+  settings: typeof settings;
   timeline: typeof timeline;
   users: typeof users;
 }>;

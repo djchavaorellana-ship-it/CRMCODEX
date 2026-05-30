@@ -2737,7 +2737,7 @@ async function downloadQuotePdf(id, options = {}) {
 async function buildQuotePdf(quote, lead) {
   const logoSrc = await assetDataUrl('/assets/top-logo-light.png');
   const html = quotePdfCaptureHtml(quote, lead, logoSrc);
-  const pageImages = await renderPdfHtmlPages(html);
+  const pageImages = await renderPdfHtmlPages(html, logoSrc);
   return imagePagesPdf(pageImages);
 }
 
@@ -2768,7 +2768,7 @@ function quotePdfCaptureHtml(quote, lead, logoSrc) {
   </style><main class="pdf-capture-sheet"><section class="pdf-capture-head"><img src="${logoSrc}" alt="TOP producciones" /><div class="pdf-capture-code"><strong>${quoteCode(quote)}</strong><span>${escapeHtml(quote.status)} · ${dateLabel(quote.updatedAt)}</span></div></section><section class="pdf-capture-meta"><div class="pdf-capture-box"><p>Cliente</p><strong>${escapeHtml(lead.name)}</strong><span>${escapeHtml(lead.phone)}</span><span>${escapeHtml(lead.email || 'Sin correo')}</span></div><div class="pdf-capture-box"><p>Evento</p><strong>${escapeHtml(lead.eventType)}</strong><span>${dateLabel(lead.eventDate)} · ${escapeHtml(lead.venue)}</span><span>${lead.guests} invitados</span></div></section>${grouped.map(([category, items]) => `<section class="pdf-capture-category"><h2>${escapeHtml(category)}</h2>${items.map((item) => `<div class="pdf-capture-row"><span><strong>${escapeHtml(item.name || category)}</strong><small>${escapeHtml(item.description || '')}</small></span><em>${item.quantity}</em><em>${money(item.unitPrice)}</em><b>${money(item.amount)}</b></div>`).join('')}</section>`).join('')}<section class="pdf-capture-totals"><div><span>Subtotal</span><b>${money(totals.subtotal)}</b></div><div><span>Descuento</span><b>${money(totals.discount)}</b></div><div><span>IVA</span><b>${money(totals.iva)}</b></div><div><span>Total</span><b>${money(totals.total)}</b></div></section>${optionalBlocks.length ? `<section class="pdf-capture-terms">${optionalBlocks.map(([title, body]) => `<h2>${escapeHtml(title)}</h2><p>${escapeHtml(body)}</p>`).join('')}</section>` : ''}</main></div>`;
 }
 
-async function renderPdfHtmlPages(html) {
+async function renderPdfHtmlPages(html, logoSrc) {
   const holder = document.createElement('div');
   holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;z-index:-1;pointer-events:none;';
   holder.innerHTML = html;
@@ -2790,6 +2790,19 @@ async function renderPdfHtmlPages(html) {
   context.fillStyle = '#f7f8f7';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  // Draw logo directly on canvas — SVG foreignObject does not render images on mobile Safari
+  if (logoSrc) {
+    const logoImg = new Image();
+    logoImg.src = logoSrc;
+    await logoImg.decode().catch(() => {});
+    if (logoImg.naturalWidth > 0) {
+      const x = 75 * scale; // page-padding(38) + sheet-border(1) + sheet-padding(36)
+      const y = 75 * scale;
+      const w = 126 * scale;
+      const h = Math.round(w * logoImg.naturalHeight / logoImg.naturalWidth);
+      context.drawImage(logoImg, x, y, w, h);
+    }
+  }
   const sourcePageHeight = Math.floor(width * (792 / 612));
   const pages = [];
   for (let offset = 0; offset < height; offset += sourcePageHeight) {
