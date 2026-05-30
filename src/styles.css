@@ -1272,6 +1272,8 @@ h1 {
   width: 290px;
   min-width: 160px;
   max-width: 440px;
+  container-type: inline-size;
+  container-name: history-panel;
 }
 
 .quote-panel--editor {
@@ -1385,124 +1387,171 @@ h1 {
 }
 
 
-/* ── Container queries: editor panel ──────────────────────────────────── */
+/* ── Container queries: history panel ─────────────────────────────────── */
 
-@container editor-panel (max-width: 680px) {
-  .quote-item-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .quote-item-actions {
-    grid-column: 1 / -1;
-  }
-
-  .lead-quote-row,
-  .service-row {
+@container history-panel (max-width: 220px) {
+  .quote-list-item {
     grid-template-columns: 1fr;
+  }
+  .quote-list-item b {
+    display: inline;
   }
 }
 
-@container editor-panel (max-width: 460px) {
+/* ── Container queries: editor panel ──────────────────────────────────── */
+
+/*
+ * The 7-column .quote-item-grid has a minimum content width of ~900px
+ * (130+120+120+150+72+110px + gaps + actions). We collapse it to 2 columns
+ * well before that minimum is reached. The threshold here (920px content-box
+ * = ~950px panel border-box) means the 7-col layout only appears on very
+ * wide editor panels (e.g. ultrawide with preview collapsed).
+ */
+@container editor-panel (max-width: 920px) {
+  .quote-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .quote-item-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+}
+
+/* Medium-narrow: collapse 2-col form helpers and wrap the category header */
+@container editor-panel (max-width: 560px) {
   .form-grid {
     grid-template-columns: 1fr;
   }
-
   .quote-category-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .quote-category-head > input {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+  }
+  .quote-category-head .row-actions {
+    justify-content: flex-start;
+  }
+  .quote-editor-tools button,
+  .quote-visibility-block button {
+    width: 100%;
+  }
+  .quote-item-grid input,
+  .quote-item-grid select {
+    font-size: clamp(11px, 2.4cqi, 14px);
+    padding: 5px 6px;
+    min-height: 30px;
+  }
+  .quote-item-grid span {
+    font-size: clamp(9px, 1.9cqi, 11px);
+  }
+}
+
+/* Narrow: fully stack everything */
+@container editor-panel (max-width: 400px) {
+  .quote-item-grid {
+    grid-template-columns: 1fr;
+  }
+  .quote-item-actions {
+    grid-column: auto;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .card-actions {
     flex-direction: column;
     align-items: stretch;
   }
-
-  .quote-category-head > input {
+  .card-actions > button {
     width: 100%;
+    justify-content: center;
   }
-
-  .quote-editor-tools,
-  .row-actions,
-  .card-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-    width: 100%;
+  .quote-category-editor {
+    padding: 8px;
   }
-
-  .quote-visibility-block {
-    grid-template-columns: 1fr;
+  .section-head {
+    flex-wrap: wrap;
+    gap: 6px;
   }
 }
 
 /* ── Container queries: preview panel ─────────────────────────────────── */
 
+/*
+ * Continuous scaling for metadata and sub-labels inside the PDF preview.
+ * The main padding/font-size are handled with cqi directly on .pdf-preview.
+ */
 @container preview-panel (max-width: 560px) {
-  .pdf-preview {
-    padding: clamp(14px, 4cqi, 28px);
-    font-size: clamp(11px, 2.6cqi, 14px);
-    min-height: auto;
-    line-height: 1.5;
-  }
-
-  .pdf-preview header {
-    gap: clamp(8px, 2cqi, 20px);
-  }
-
   .pdf-preview header img {
-    width: clamp(48px, 13cqi, 86px);
-    max-height: 56px;
+    width: clamp(50px, 13cqi, 86px);
+    max-height: clamp(40px, 11cqi, 70px);
   }
-
   .pdf-preview header div {
-    max-width: 58cqi;
+    max-width: 60cqi;
   }
-
-  .pdf-preview header strong {
-    font-size: clamp(11px, 2.8cqi, 15px);
+  .pdf-preview header span,
+  .pdf-preview .pdf-meta span,
+  .pdf-row small,
+  .pdf-terms p {
+    font-size: clamp(10px, 2.2cqi, 12px);
   }
-
+  .pdf-meta p {
+    font-size: clamp(9px, 2cqi, 11px);
+  }
+  .pdf-table h3,
+  .pdf-terms h3 {
+    font-size: clamp(11px, 2.5cqi, 13px);
+  }
   .pdf-meta {
     grid-template-columns: 1fr;
     gap: 8px;
     margin: clamp(10px, 3cqi, 18px) 0;
   }
-
   .pdf-meta div {
-    padding: clamp(8px, 2cqi, 12px);
+    padding: clamp(8px, 2.2cqi, 12px);
   }
-
   .pdf-row {
-    grid-template-columns: 1fr auto auto;
-    gap: clamp(4px, 1.2cqi, 8px);
-    padding: clamp(5px, 1.5cqi, 8px) 0;
+    grid-template-columns: 1fr 36px 76px;
+    gap: clamp(4px, 1.4cqi, 8px);
+    padding: clamp(5px, 1.6cqi, 8px) 0;
   }
-
   .pdf-row em:first-of-type {
     display: none;
   }
-
   .pdf-totals {
+    width: 100%;
     margin-left: 0;
   }
-
-  .pdf-totals .field-rows {
-    max-width: 100%;
+  .pdf-table {
+    gap: clamp(8px, 2.5cqi, 16px);
   }
 }
 
-@container preview-panel (max-width: 360px) {
+/* Very narrow: full stack */
+@container preview-panel (max-width: 340px) {
   .pdf-preview header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 8px;
   }
-
   .pdf-preview header div {
     text-align: left;
     max-width: 100%;
   }
-
   .pdf-row {
     grid-template-columns: 1fr;
   }
-
   .pdf-row em,
   .pdf-row b {
     text-align: left;
+  }
+  .pdf-meta {
+    display: block;
+  }
+  .pdf-meta > div {
+    margin-bottom: 8px;
   }
 }
 
@@ -1516,6 +1565,11 @@ h1 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.form-grid > *,
+.quote-item-grid > * {
+  min-width: 0;
 }
 
 .quote-items-editor {
@@ -1632,13 +1686,16 @@ h1 {
 }
 
 .pdf-preview {
-  min-height: 720px;
-  padding: 28px;
+  min-height: 600px;
+  padding: clamp(14px, 4.2cqi, 28px);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
   color: #171b19;
+  font-size: clamp(10.5px, 2.3cqi, 14px);
   box-shadow: inset 0 0 0 1px rgba(8, 123, 53, 0.04);
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .pdf-preview header {
