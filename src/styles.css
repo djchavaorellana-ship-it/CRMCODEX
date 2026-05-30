@@ -1387,175 +1387,7 @@ h1 {
 }
 
 
-/* ── Container queries: history panel ─────────────────────────────────── */
-
-@container history-panel (max-width: 220px) {
-  .quote-list-item {
-    grid-template-columns: 1fr;
-  }
-  .quote-list-item b {
-    display: inline;
-  }
-}
-
-/* ── Container queries: editor panel ──────────────────────────────────── */
-
-/*
- * The 7-column .quote-item-grid has a minimum content width of ~900px
- * (130+120+120+150+72+110px + gaps + actions). We collapse it to 2 columns
- * well before that minimum is reached. The threshold here (920px content-box
- * = ~950px panel border-box) means the 7-col layout only appears on very
- * wide editor panels (e.g. ultrawide with preview collapsed).
- */
-@container editor-panel (max-width: 920px) {
-  .quote-item-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .quote-item-actions {
-    grid-column: 1 / -1;
-    flex-wrap: wrap;
-  }
-}
-
-/* Medium-narrow: collapse 2-col form helpers and wrap the category header */
-@container editor-panel (max-width: 560px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-  .quote-category-head {
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .quote-category-head > input {
-    flex: 1 1 100%;
-    width: 100%;
-    min-width: 0;
-  }
-  .quote-category-head .row-actions {
-    justify-content: flex-start;
-  }
-  .quote-editor-tools button,
-  .quote-visibility-block button {
-    width: 100%;
-  }
-  .quote-item-grid input,
-  .quote-item-grid select {
-    font-size: clamp(11px, 2.4cqi, 14px);
-    padding: 5px 6px;
-    min-height: 30px;
-  }
-  .quote-item-grid span {
-    font-size: clamp(9px, 1.9cqi, 11px);
-  }
-}
-
-/* Narrow: fully stack everything */
-@container editor-panel (max-width: 400px) {
-  .quote-item-grid {
-    grid-template-columns: 1fr;
-  }
-  .quote-item-actions {
-    grid-column: auto;
-    flex-wrap: wrap;
-    width: 100%;
-  }
-  .card-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .card-actions > button {
-    width: 100%;
-    justify-content: center;
-  }
-  .quote-category-editor {
-    padding: 8px;
-  }
-  .section-head {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-}
-
-/* ── Container queries: preview panel ─────────────────────────────────── */
-
-/*
- * Continuous scaling for metadata and sub-labels inside the PDF preview.
- * The main padding/font-size are handled with cqi directly on .pdf-preview.
- */
-@container preview-panel (max-width: 560px) {
-  .pdf-preview header img {
-    width: clamp(50px, 13cqi, 86px);
-    max-height: clamp(40px, 11cqi, 70px);
-  }
-  .pdf-preview header div {
-    max-width: 60cqi;
-  }
-  .pdf-preview header span,
-  .pdf-preview .pdf-meta span,
-  .pdf-row small,
-  .pdf-terms p {
-    font-size: clamp(10px, 2.2cqi, 12px);
-  }
-  .pdf-meta p {
-    font-size: clamp(9px, 2cqi, 11px);
-  }
-  .pdf-table h3,
-  .pdf-terms h3 {
-    font-size: clamp(11px, 2.5cqi, 13px);
-  }
-  .pdf-meta {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    margin: clamp(10px, 3cqi, 18px) 0;
-  }
-  .pdf-meta div {
-    padding: clamp(8px, 2.2cqi, 12px);
-  }
-  .pdf-row {
-    grid-template-columns: 1fr 36px 76px;
-    gap: clamp(4px, 1.4cqi, 8px);
-    padding: clamp(5px, 1.6cqi, 8px) 0;
-  }
-  .pdf-row em:first-of-type {
-    display: none;
-  }
-  .pdf-totals {
-    width: 100%;
-    margin-left: 0;
-  }
-  .pdf-table {
-    gap: clamp(8px, 2.5cqi, 16px);
-  }
-}
-
-/* Very narrow: full stack */
-@container preview-panel (max-width: 340px) {
-  .pdf-preview header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .pdf-preview header div {
-    text-align: left;
-    max-width: 100%;
-  }
-  .pdf-row {
-    grid-template-columns: 1fr;
-  }
-  .pdf-row em,
-  .pdf-row b {
-    text-align: left;
-  }
-  .pdf-meta {
-    display: block;
-  }
-  .pdf-meta > div {
-    margin-bottom: 8px;
-  }
-}
-
-/* ── End container queries ─────────────────────────────────────────────── */
+/* Container queries are placed AFTER base rules — see below .pdf-terms */
 
 .quote-editor {
   padding: 0;
@@ -1802,6 +1634,171 @@ h1 {
   padding-top: 16px;
   border-top: 1px solid #e2e5e3;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONTAINER QUERIES — must come AFTER all base rules so they win by
+   source order at equal specificity.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── History panel ───────────────────────────────────────────────────────── */
+
+@container history-panel (max-width: 220px) {
+  .quote-list-item {
+    grid-template-columns: 1fr;
+  }
+  .quote-list-item b {
+    display: inline;
+  }
+}
+
+/* ── Editor panel ────────────────────────────────────────────────────────── */
+
+/*
+ * The 7-column grid needs ~900px minimum. Collapse to 2 columns well before
+ * overflow — covers all typical 3-panel desktop widths.
+ */
+@container editor-panel (max-width: 920px) {
+  .quote-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .quote-item-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+}
+
+@container editor-panel (max-width: 560px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .quote-category-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .quote-category-head > input {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+  }
+  .quote-category-head .row-actions {
+    justify-content: flex-start;
+  }
+  .quote-editor-tools button,
+  .quote-visibility-block button {
+    width: 100%;
+  }
+  .quote-item-grid input,
+  .quote-item-grid select {
+    font-size: clamp(11px, 2.4cqi, 14px);
+    padding: 5px 6px;
+    min-height: 30px;
+  }
+  .quote-item-grid span {
+    font-size: clamp(9px, 1.9cqi, 11px);
+  }
+}
+
+@container editor-panel (max-width: 400px) {
+  .quote-item-grid {
+    grid-template-columns: 1fr;
+  }
+  .quote-item-actions {
+    grid-column: auto;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .card-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .card-actions > button {
+    width: 100%;
+    justify-content: center;
+  }
+  .quote-category-editor {
+    padding: 8px;
+  }
+  .section-head {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+}
+
+/* ── Preview panel ───────────────────────────────────────────────────────── */
+
+@container preview-panel (max-width: 560px) {
+  .pdf-preview header img {
+    width: clamp(50px, 13cqi, 86px);
+    max-height: clamp(40px, 11cqi, 70px);
+  }
+  .pdf-preview header div {
+    max-width: 60cqi;
+  }
+  .pdf-preview header span,
+  .pdf-preview .pdf-meta span,
+  .pdf-row small,
+  .pdf-terms p {
+    font-size: clamp(10px, 2.2cqi, 12px);
+  }
+  .pdf-meta p {
+    font-size: clamp(9px, 2cqi, 11px);
+  }
+  .pdf-table h3,
+  .pdf-terms h3 {
+    font-size: clamp(11px, 2.5cqi, 13px);
+  }
+  .pdf-meta {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin: clamp(10px, 3cqi, 18px) 0;
+  }
+  .pdf-meta div {
+    padding: clamp(8px, 2.2cqi, 12px);
+  }
+  .pdf-row {
+    grid-template-columns: 1fr 36px 76px;
+    gap: clamp(4px, 1.4cqi, 8px);
+    padding: clamp(5px, 1.6cqi, 8px) 0;
+  }
+  .pdf-row em:first-of-type {
+    display: none;
+  }
+  .pdf-totals {
+    width: 100%;
+    margin-left: 0;
+  }
+  .pdf-table {
+    gap: clamp(8px, 2.5cqi, 16px);
+  }
+}
+
+@container preview-panel (max-width: 340px) {
+  .pdf-preview header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .pdf-preview header div {
+    text-align: left;
+    max-width: 100%;
+  }
+  .pdf-row {
+    grid-template-columns: 1fr;
+  }
+  .pdf-row em,
+  .pdf-row b {
+    text-align: left;
+  }
+  .pdf-meta {
+    display: block;
+  }
+  .pdf-meta > div {
+    margin-bottom: 8px;
+  }
+}
+
+/* ── End container queries ───────────────────────────────────────────────── */
 
 .lead-quote-list {
   display: grid;
