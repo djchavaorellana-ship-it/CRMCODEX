@@ -1376,7 +1376,7 @@ function serviceCatalogCard() {
   const sorted = state.serviceCatalog.slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const isSuperAdmin = currentUser()?.isSuperAdmin;
   return `<article class="card user-admin-card"><div class="section-head"><div><div class="card-title">Catálogo de servicios</div><p>Base maestra de precios para cotizaciones. Arrastra para reordenar.</p></div>${isSuperAdmin ? '<button class="secondary-button compact" type="button" data-action="new-service">Agregar servicio</button>' : ''}</div>
-    <div class="service-table">${sorted.map((service) => `<div class="service-row ${isSuperAdmin ? 'service-row--admin' : ''} ${service.active ? '' : 'is-inactive'}" draggable="${isSuperAdmin ? 'true' : 'false'}" data-drag-svc="${service.id}">
+    <div class="service-table">${sorted.map((service) => `<div class="service-row ${service.active ? '' : 'is-inactive'}" draggable="${isSuperAdmin ? 'true' : 'false'}" data-drag-svc="${service.id}">
       ${isSuperAdmin ? '<span class="service-drag-handle" title="Arrastra para reordenar">⠿</span>' : ''}
       <span><strong>${service.name}</strong><small>${service.id} · ${service.category}</small></span>
       <span>${money(service.listPrice)}<small>Costo: ${service.internalCost ? money(service.internalCost) : 'No definido'}</small></span>
