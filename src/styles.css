@@ -98,7 +98,7 @@ textarea {
 }
 
 .brand img {
-  width: 78px;
+  width: 86px;
   height: auto;
   object-fit: contain;
 }
@@ -434,6 +434,8 @@ h1 {
   background: var(--surface);
   color: var(--muted);
   font-size: 12px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .priority-filter.active {
@@ -1030,7 +1032,9 @@ h1 {
 }
 
 .stats strong {
-  font-size: 22px;
+  font-size: clamp(12px, 1.8vw, 22px);
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .stats small {
@@ -1076,7 +1080,7 @@ h1 {
   }
 
   .brand img {
-    height: 28px;
+    height: 37px;
     width: auto;
   }
 
@@ -1189,8 +1193,9 @@ h1 {
 }
 
 .metric-card strong {
-  font-size: clamp(14px, 1.6vw, 22px);
-  overflow-wrap: break-word;
+  font-size: clamp(12px, 1.8vw, 22px);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .metric-card span {
@@ -1299,9 +1304,59 @@ h1 {
 
 .quote-editor-layout {
   display: grid;
-  grid-template-columns: minmax(410px, 0.92fr) minmax(420px, 1.08fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
   align-items: start;
+}
+
+.quote-editor-layout.focus-editor {
+  grid-template-columns: 1fr;
+}
+
+.quote-editor-layout.focus-editor > :last-child {
+  display: none;
+}
+
+.quote-editor-layout.focus-preview {
+  grid-template-columns: 1fr;
+}
+
+.quote-editor-layout.focus-preview > :first-child {
+  display: none;
+}
+
+.quote-editor-wrapper {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.quote-focus-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quote-focus-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.quote-focus-tabs button.active {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+  background: color-mix(in srgb, var(--green-soft) 40%, var(--surface));
+  color: var(--text);
+  font-weight: 650;
 }
 
 .quote-editor {
@@ -1596,6 +1651,35 @@ h1 {
 
 .service-row.is-inactive {
   opacity: 0.55;
+}
+
+.service-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  color: var(--faint);
+  cursor: grab;
+  user-select: none;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.service-drag-handle:active {
+  cursor: grabbing;
+}
+
+.service-row[draggable="true"] {
+  cursor: default;
+}
+
+.service-row.drag-over {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green-soft) 35%, var(--surface));
+}
+
+.service-row.dragging {
+  opacity: 0.4;
 }
 
 .table-row small,
@@ -2337,10 +2421,14 @@ h1 {
     margin-inline: -12px;
     padding: 0 12px 2px;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .priority-filter {
     flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 14px;
   }
 
   .card {
@@ -2521,7 +2609,7 @@ h1 {
   }
 
   .brand img {
-    height: 26px;
+    height: 34px;
     width: auto;
   }
 

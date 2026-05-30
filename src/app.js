@@ -259,7 +259,7 @@ function createSeedServiceCatalog() {
     ['svc-planta', 'Planta de luz', 'Producción y staff', 'Planta de luz para respaldo operativo.', 14500, 7800],
     ['svc-staff', 'Staff operativo', 'Producción y staff', 'Equipo operativo para montaje, show y desmontaje.', 9500, 4800],
     ['svc-director', 'Director técnico', 'Producción y staff', 'Direccion tecnica y coordinacion de produccion.', 12000, 6000],
-  ].map(([id, name, category, description, listPrice, internalCost]) => serviceEntity({ id, name, category, description, listPrice, internalCost, active: true }));
+  ].map(([id, name, category, description, listPrice, internalCost], index) => serviceEntity({ id, name, category, description, listPrice, internalCost, active: true, sortOrder: index }));
 }
 
 function leadEntity(data) {
@@ -398,6 +398,7 @@ function serviceEntity(data) {
     internalCost: Number(data.internalCost || 0),
     active: data.active !== undefined ? Boolean(data.active) : true,
     notes: data.notes || '',
+    sortOrder: Number(data.sortOrder ?? 9999),
     updatedAt: data.updatedAt || new Date().toISOString(),
   };
 }
@@ -1197,10 +1198,17 @@ function quotesView() {
         <div class="section-head"><div><div class="card-title">Historial</div><p>Versiones guardadas por lead.</p></div></div>
         <div class="quote-list">${quotes.length ? quotes.map(quoteListItem).join('') : '<div class="empty-panel">Todavia no hay cotizaciones.</div>'}</div>
       </aside>
-      <section class="quote-editor-layout">
-        <article class="card quote-editor-card">${quoteEditorForm(quote, lead, state.quotes.some((item) => item.id === quote.id))}</article>
-        <article class="card quote-preview-card">${quotePreview(quote, lead)}</article>
-      </section>
+      <div class="quote-editor-wrapper">
+        <div class="quote-focus-tabs">
+          <button type="button" data-action="quote-focus-both" class="active">⊞ Editor + Preview</button>
+          <button type="button" data-action="quote-focus-editor">⊡ Solo editor</button>
+          <button type="button" data-action="quote-focus-preview">□ Solo preview</button>
+        </div>
+        <section class="quote-editor-layout" id="quote-editor-layout">
+          <article class="card quote-editor-card">${quoteEditorForm(quote, lead, state.quotes.some((item) => item.id === quote.id))}</article>
+          <article class="card quote-preview-card">${quotePreview(quote, lead)}</article>
+        </section>
+      </div>
     </div>
   `;
 }
@@ -1268,12 +1276,15 @@ function settingsView() {
 }
 
 function serviceCatalogCard() {
-  return `<article class="card user-admin-card"><div class="section-head"><div><div class="card-title">Catálogo de servicios</div><p>Base maestra de precios para cotizaciones.</p></div>${currentUser()?.isSuperAdmin ? '<button class="secondary-button compact" type="button" data-action="new-service">Agregar servicio</button>' : ''}</div>
-    <div class="service-table">${state.serviceCatalog.map((service) => `<div class="service-row ${service.active ? '' : 'is-inactive'}">
+  const sorted = state.serviceCatalog.slice().sort((a, b) => a.sortOrder - b.sortOrder);
+  const isSuperAdmin = currentUser()?.isSuperAdmin;
+  return `<article class="card user-admin-card"><div class="section-head"><div><div class="card-title">Catálogo de servicios</div><p>Base maestra de precios para cotizaciones. Arrastra para reordenar.</p></div>${isSuperAdmin ? '<button class="secondary-button compact" type="button" data-action="new-service">Agregar servicio</button>' : ''}</div>
+    <div class="service-table">${sorted.map((service) => `<div class="service-row ${service.active ? '' : 'is-inactive'}" draggable="${isSuperAdmin ? 'true' : 'false'}" data-drag-svc="${service.id}">
+      ${isSuperAdmin ? '<span class="service-drag-handle" title="Arrastra para reordenar">⠿</span>' : ''}
       <span><strong>${service.name}</strong><small>${service.id} · ${service.category}</small></span>
       <span>${money(service.listPrice)}<small>Costo: ${service.internalCost ? money(service.internalCost) : 'No definido'}</small></span>
       <span>${service.active ? 'Activo' : 'Inactivo'}</span>
-      ${currentUser()?.isSuperAdmin ? `<div class="row-actions"><button class="secondary-button compact" type="button" data-action="edit-service" data-service="${service.id}">Editar</button><button class="secondary-button compact" type="button" data-action="toggle-service" data-service="${service.id}">${service.active ? 'Desactivar' : 'Activar'}</button><button class="secondary-button compact danger" type="button" data-action="delete-service" data-service="${service.id}">Eliminar</button></div>` : ''}
+      ${isSuperAdmin ? `<div class="row-actions"><button class="secondary-button compact" type="button" data-action="edit-service" data-service="${service.id}">Editar</button><button class="secondary-button compact" type="button" data-action="toggle-service" data-service="${service.id}">${service.active ? 'Desactivar' : 'Activar'}</button><button class="secondary-button compact danger" type="button" data-action="delete-service" data-service="${service.id}">Eliminar</button></div>` : ''}
     </div>`).join('')}</div></article>`;
 }
 
@@ -1760,10 +1771,17 @@ function bindEvents() {
     if (!requirePermission(viewPermissions[node.dataset.view])) return;
     setState({ view: node.dataset.view, userMenuOpen: false, bnavMoreOpen: false });
   }));
+  let searchDebounceTimer = null;
   document.querySelector('[data-search]')?.addEventListener('input', (event) => {
-    state.search = event.target.value;
-    persist();
-    render();
+    const value = event.target.value;
+    state.search = value;
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      persist();
+      render();
+      const el = document.querySelector('[data-search]');
+      if (el) { el.focus(); el.setSelectionRange(value.length, value.length); }
+    }, 220);
   });
   document.querySelectorAll('[data-priority]').forEach((node) => node.addEventListener('click', () => setState({ activePriority: node.dataset.priority })));
   document.querySelectorAll('[data-lead-status-filter]').forEach((node) => node.addEventListener('click', () => setState({ leadStatusFilter: node.dataset.leadStatusFilter })));
@@ -1841,6 +1859,38 @@ function bindEvents() {
   document.querySelectorAll('[data-form]').forEach((form) => form.addEventListener('submit', handleSubmit));
   document.querySelectorAll('form[data-form="quote"]').forEach((form) => form.addEventListener('keydown', preventQuoteEnterSubmit));
   document.querySelectorAll('[data-service-select]').forEach((node) => node.addEventListener('change', () => fillServiceRow(node)));
+
+  let dragSvcId = null;
+  document.querySelectorAll('[data-drag-svc]').forEach((node) => {
+    node.addEventListener('dragstart', (event) => {
+      dragSvcId = node.dataset.dragSvc;
+      event.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => node.classList.add('dragging'), 0);
+    });
+    node.addEventListener('dragend', () => {
+      dragSvcId = null;
+      node.classList.remove('dragging');
+      document.querySelectorAll('[data-drag-svc]').forEach((n) => n.classList.remove('drag-over'));
+    });
+    node.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('[data-drag-svc]').forEach((n) => n.classList.remove('drag-over'));
+      if (node.dataset.dragSvc !== dragSvcId) node.classList.add('drag-over');
+    });
+    node.addEventListener('drop', (event) => {
+      event.preventDefault();
+      const targetId = node.dataset.dragSvc;
+      if (!dragSvcId || dragSvcId === targetId) return;
+      const catalog = state.serviceCatalog.slice().sort((a, b) => a.sortOrder - b.sortOrder);
+      const fromIdx = catalog.findIndex((s) => s.id === dragSvcId);
+      const toIdx = catalog.findIndex((s) => s.id === targetId);
+      if (fromIdx === -1 || toIdx === -1) return;
+      const [moved] = catalog.splice(fromIdx, 1);
+      catalog.splice(toIdx, 0, moved);
+      setState({ serviceCatalog: catalog.map((s, idx) => ({ ...s, sortOrder: idx })), toast: 'Orden guardado' });
+    });
+  });
 }
 
 function bindAuthEvents() {
@@ -1914,6 +1964,16 @@ function handleAction(event, action) {
   if (action === 'delete-service') return deleteService(target.dataset.service);
   if (action === 'approve-discount') return approveDiscountRequest(target.dataset.request);
   if (action === 'close-drawer') return setState({ drawer: null });
+  if (action.startsWith('quote-focus-')) {
+    const layout = document.querySelector('#quote-editor-layout');
+    if (!layout) return;
+    layout.classList.remove('focus-editor', 'focus-preview');
+    document.querySelectorAll('.quote-focus-tabs button').forEach((btn) => btn.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    if (action === 'quote-focus-editor') layout.classList.add('focus-editor');
+    if (action === 'quote-focus-preview') layout.classList.add('focus-preview');
+    return;
+  }
   if (action === 'new-lead') return requirePermission('create_leads') && setState({ drawer: { type: 'lead-form', mode: 'new' } });
   if (action === 'edit-lead') return requirePermission('edit_leads') && setState({ drawer: { type: 'lead-form', mode: 'edit' } });
   if (action === 'new-quote') return createDraftQuote(target.dataset.lead || state.selectedLeadId);
@@ -2116,10 +2176,23 @@ async function handleSubmit(event) {
 
   if (type === 'service') {
     if (!currentUser()?.isSuperAdmin) return requirePermission('manage_quote_pricing');
-    const service = serviceEntity({ id: data.internalId, name: data.name, category: data.category, description: data.description, listPrice: data.listPrice, internalCost: data.internalCost, active: formData.get('active') === 'on', notes: data.notes });
     const existingId = data.id;
+    const existingSvc = existingId ? state.serviceCatalog.find((item) => item.id === existingId) : null;
+    const service = serviceEntity({
+      id: existingId || data.internalId,
+      name: data.name,
+      category: data.category,
+      description: data.description,
+      listPrice: data.listPrice,
+      internalCost: data.internalCost,
+      active: formData.get('active') === 'on',
+      notes: data.notes,
+      sortOrder: existingSvc?.sortOrder ?? state.serviceCatalog.length,
+    });
     return setState({
-      serviceCatalog: existingId ? state.serviceCatalog.map((item) => item.id === existingId ? service : item) : [service, ...state.serviceCatalog],
+      serviceCatalog: existingId
+        ? state.serviceCatalog.map((item) => item.id === existingId ? service : item)
+        : [...state.serviceCatalog, service],
       drawer: null,
       toast: existingId ? 'Servicio actualizado' : 'Servicio creado',
     });
