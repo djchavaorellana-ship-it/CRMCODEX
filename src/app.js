@@ -281,8 +281,8 @@ function leadEntity(data) {
     stage: stageAliases[data.stage] || data.stage || 'Lead nuevo',
     priority: priorityMeta[data.priority] ? data.priority : 'seguimiento',
     potential: Number(data.potential || 0),
-    owner: data.owner || 'Alejandro Lopez',
-    ownerUserId: data.ownerUserId || 'user-alejandro',
+    owner: data.owner || currentUser()?.name || 'Sistema',
+    ownerUserId: data.ownerUserId || currentUser()?.id || '',
     notes: data.notes || '',
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: data.updatedAt || new Date().toISOString(),
@@ -336,7 +336,7 @@ function followUpEntity(data) {
     action: data.action || data.nextAction || 'Seguimiento comercial',
     dueAt: data.dueAt || data.nextAt || '',
     objective: data.objective || 'Seguimiento comercial',
-    assignedTo: data.assignedTo || 'Alejandro Lopez',
+    assignedTo: data.assignedTo || currentUser()?.name || 'Sistema',
     createdAt: data.createdAt || new Date().toISOString(),
     completedAt: data.completedAt || '',
     canceledAt: data.canceledAt || '',
@@ -368,7 +368,7 @@ function quoteEntity(data) {
     showTerms: data.showTerms !== undefined ? Boolean(data.showTerms) : true,
     showNotes: data.showNotes !== undefined ? Boolean(data.showNotes) : true,
     current: data.current !== undefined ? Boolean(data.current) : true,
-    createdBy: data.createdBy || 'Alejandro Lopez',
+    createdBy: data.createdBy || currentUser()?.name || 'Sistema',
     fileId: data.fileId || '',
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: data.updatedAt || new Date().toISOString(),
@@ -428,7 +428,7 @@ function fileEntity(data) {
     name: data.name || 'archivo',
     kind: data.kind || fileKindFromMime(data.mime),
     mime: data.mime || 'application/octet-stream',
-    uploadedBy: data.uploadedBy || 'Alejandro Lopez',
+    uploadedBy: data.uploadedBy || currentUser()?.name || 'Sistema',
     uploadedAt: data.uploadedAt || new Date().toISOString(),
     dataUrl: data.dataUrl || '',
     storageId: data.storageId || '',
@@ -444,7 +444,7 @@ function timelineEntity(data) {
     preview: data.preview || '',
     detail: data.detail || '',
     channel: data.channel || 'Sistema',
-    owner: data.owner || 'Alejandro Lopez',
+    owner: data.owner || currentUser()?.name || 'Sistema',
     date: data.date || data.createdAt || new Date().toISOString(),
     relatedEntityType: data.relatedEntityType || '',
     relatedEntityId: data.relatedEntityId || '',
@@ -2296,7 +2296,7 @@ async function handleSubmit(event) {
     const payload = leadEntity({ ...data, guests: Number(data.guests || 0), potential: Number(data.potential || 0), services: formData.getAll('services') });
     if (state.drawer.mode === 'edit') return updateLead(lead.id, { ...payload, id: lead.id, ownerUserId: lead.ownerUserId, owner: lead.owner, createdAt: lead.createdAt }, 'Lead actualizado');
     const newLead = { ...payload, ownerUserId: user.id, owner: user.name };
-    const eventLog = timelineEntity({ leadId: newLead.id, type: 'Cambios importantes', title: 'Lead creado', preview: 'Nuevo lead registrado en TOP CRM.', detail: 'Se capturaron los datos iniciales del prospecto.', channel: 'Sistema' });
+    const eventLog = timelineEntity({ leadId: newLead.id, type: 'Cambios importantes', title: 'Lead creado', preview: 'Nuevo lead registrado en TOP CRM.', detail: 'Se capturaron los datos iniciales del prospecto.', channel: 'Sistema', owner: user.name });
     return setState({ leads: [newLead, ...state.leads], timelineEvents: [eventLog, ...state.timelineEvents], selectedLeadId: newLead.id, drawer: null, toast: 'Lead creado' });
   }
 
@@ -2356,8 +2356,9 @@ async function handleSubmit(event) {
 
   if (type === 'followup') {
     if (!requirePermission('edit_leads')) return;
-    const followup = followUpEntity({ leadId: lead.id, action: data.action, dueAt: data.dueAt, objective: data.objective });
-    const timeline = timelineEntity({ leadId: lead.id, type: 'Seguimiento agendado', title: data.action, preview: datetimeLabel(data.dueAt), detail: data.objective, channel: 'Llamada', relatedEntityType: 'FollowUp', relatedEntityId: followup.id });
+    const actor = currentUser()?.name || 'Sistema';
+    const followup = followUpEntity({ leadId: lead.id, action: data.action, dueAt: data.dueAt, objective: data.objective, assignedTo: actor });
+    const timeline = timelineEntity({ leadId: lead.id, type: 'Seguimiento agendado', title: data.action, preview: datetimeLabel(data.dueAt), detail: data.objective, channel: 'Llamada', owner: actor, relatedEntityType: 'FollowUp', relatedEntityId: followup.id });
     return setState({ followUps: [followup, ...state.followUps], timelineEvents: [timeline, ...state.timelineEvents], drawer: null, toast: 'Seguimiento agendado' });
   }
 
@@ -2795,7 +2796,7 @@ function completeFollowup() {
   const followup = currentFollowup(lead.id);
   if (!followup) return setState({ toast: 'No hay seguimiento activo' });
   const completedAt = new Date().toISOString();
-  const timeline = timelineEntity({ leadId: lead.id, type: 'Seguimiento realizado', title: followup.action, preview: 'Seguimiento completado.', detail: `Se marco como realizado: ${followup.action}.`, channel: 'Llamada', relatedEntityType: 'FollowUp', relatedEntityId: followup.id });
+  const timeline = timelineEntity({ leadId: lead.id, type: 'Seguimiento realizado', title: followup.action, preview: 'Seguimiento completado.', detail: `Se marco como realizado: ${followup.action}.`, channel: 'Llamada', owner: currentUser()?.name || 'Sistema', relatedEntityType: 'FollowUp', relatedEntityId: followup.id });
   setState({
     followUps: state.followUps.map((item) => item.id === followup.id ? { ...item, completedAt } : item),
     timelineEvents: [timeline, ...state.timelineEvents],
@@ -2824,6 +2825,7 @@ function updateLead(id, patch, message) {
         ? `El lead paso a ${patch.stage}. Se cancelo cualquier seguimiento operativo pendiente y la prioridad cambio a CERRADO.`
         : `El lead cambio de etapa: ${lead.stage} → ${patch.stage}.`,
       channel: 'Sistema',
+      owner: currentUser()?.name || 'Sistema',
     })]
     : [];
   const canceledAt = closingLead ? new Date().toISOString() : '';
